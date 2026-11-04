@@ -31,9 +31,8 @@ object SosRepository {
             ?: client.lastLocation.await()
     }
 
-    /** Publishes an SOS at the phone's current position. Throws on failure. */
-    suspend fun sendSos(context: Context) {
-        val loc = currentLocation(context) ?: error("Couldn't get your location. Is GPS on?")
+    /** Publishes an SOS at [loc] so nearby phones get alerted. Throws on failure. */
+    suspend fun publishAlert(context: Context, loc: Location) {
         val alert = mapOf(
             "lat" to loc.latitude,
             "lng" to loc.longitude,

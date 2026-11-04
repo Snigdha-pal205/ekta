@@ -3,15 +3,15 @@ package com.ekta.sos
 import kotlin.math.floor
 
 /** Alerts reach every phone within this radius of the sender. */
-const val ALERT_RADIUS_METERS = 200f
+const val ALERT_RADIUS_METERS = 500f
 
 /** Alerts older than this are ignored (e.g. when a phone comes back online late). */
 const val ALERT_MAX_AGE_MS = 10 * 60 * 1000L
 
 /**
- * The world is split into a 0.01° grid (~1.1 km tall). An alert is tagged with its
- * cell, and each phone listens to its own cell plus the 8 surrounding ones, so any
- * alert within 200 m is always in one of the 9 cells it watches.
+ * The world is split into a 0.01° grid (~1.1 km tall, ~1 km wide in India). An alert is
+ * tagged with its cell, and each phone listens to its own cell plus the 8 surrounding
+ * ones, so any alert within 500 m is always in one of the 9 cells it watches.
  */
 private const val CELL_DEG = 0.01
 

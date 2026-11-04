@@ -2,8 +2,9 @@
 """
 End-to-end test for Ekta SOS on an Android emulator against the real Firebase project.
 
-Each round: fresh install -> setup flow through the real permission popups -> SOS from
-the app -> alerts from fake nearby/far phones -> locked screen -> restart.
+Each round: fresh install -> setup through the real permission popups -> SOS from the app
+(real nearby alert + real SMS, demo 112 call + demo committee SMS) -> I'M SAFE -> alerts from
+fake nearby/far phones open the full-screen page -> locked screen -> restart.
 
 Usage: python3 tests/e2e.py [rounds]
 Needs: a running emulator (adb), the Firebase CLI logged in (for cleanup reads/deletes).
@@ -131,11 +132,28 @@ def wait_new_alert(before, timeout=20):
     return set()
 
 
+def open_app():
+    """am start, retried: right after a restart the first launch can get swallowed."""
+    for _ in range(5):
+        adb("shell", "am", "start", "-W", "-n", f"{PKG}/.MainActivity")
+        time.sleep(2)
+        if f"{PKG}/.MainActivity" in top_activity():
+            return True
+        wake_and_unlock()
+    return False
+
+
+def ui_xml():
+    """Fresh UI dump ('' if uiautomator couldn't read the screen this time)."""
+    adb("shell", "rm", "-f", "/sdcard/ui.xml")
+    adb("shell", "uiautomator", "dump", "/sdcard/ui.xml")
+    return adb("shell", "cat", "/sdcard/ui.xml")
+
+
 def ui_tap(pattern, timeout=12):
     end = time.time() + timeout
     while time.time() < end:
-        adb("shell", "uiautomator", "dump", "/sdcard/ui.xml")
-        xml = adb("shell", "cat", "/sdcard/ui.xml")
+        xml = ui_xml()
         for m in re.finditer(r'<node [^>]*?text="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
             if re.fullmatch(pattern, m.group(1), re.I):
                 a, b, c, d = map(int, m.groups()[1:])
@@ -146,9 +164,14 @@ def ui_tap(pattern, timeout=12):
     return False
 
 
-def screen_has(text):
-    adb("shell", "uiautomator", "dump", "/sdcard/ui.xml")
-    return text.lower() in adb("shell", "cat", "/sdcard/ui.xml").lower()
+def screen_has(text, timeout=10):
+    end = time.time() + timeout
+    while True:
+        if text.lower() in ui_xml().lower():
+            return True
+        if time.time() > end:
+            return False
+        time.sleep(1)
 
 
 def service_running():
@@ -166,28 +189,84 @@ def device_id():
     return m.group(1) if m else None
 
 
+def hide_keyboard():
+    """BACK only while the keyboard is up (otherwise BACK would close the dialog)."""
+    if "mInputShown=true" in adb("shell", "dumpsys", "input_method"):
+        adb("shell", "input", "keyevent", "KEYCODE_BACK")
+        time.sleep(1)
+
+
 def wake_and_unlock():
     adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
     adb("shell", "wm", "dismiss-keyguard")
     time.sleep(1)
 
 
+def top_activity():
+    out = adb("shell", "dumpsys", "activity", "activities")
+    m = re.search(r"topResumedActivity=.*?\{[^}]*? ([\w.]+/[\w.]+)", out)
+    return m.group(1) if m else ""
+
+
+def wait_alert_page(timeout):
+    """Waits for the full-screen alert page; returns its 'N m away' text or None."""
+    end = time.time() + timeout
+    while time.time() < end:
+        if "AlertActivity" in top_activity():
+            time.sleep(1)
+            m = re.search(r'text="(\d+ m away)"', ui_xml())
+            return m.group(1) if m else "page shown"
+        time.sleep(1)
+    return None
+
+
+def sms_inbox():
+    """Messages the phone has actually sent out over the SIM (the 'sent' folder).
+    The emulator doesn't loop SMS back into its own inbox; on real phones the
+    contact's phone receives them."""
+    out = adb("shell", "content", "query", "--uri", "content://sms/sent", "--projection", "body")
+    return re.findall(r"body=(.*)", out)
+
+
+def wait_sms(contains, before_count, timeout=40):
+    end = time.time() + timeout
+    while time.time() < end:
+        hits = [b for b in sms_inbox() if contains in b]
+        if len(hits) > before_count:
+            return hits[0]
+        time.sleep(2)
+    return None
+
+
+def in_phone_call():
+    out = adb("shell", "dumpsys", "telephony.registry")
+    return any(int(x) != 0 for x in re.findall(r"mCallState=(\d)", out))
+
+
 # ---------- One round ----------
 
-def run_round(n, place, lat, lng):
+def run_round(n, place, lat, lng, test_live_update=False):
     log(f"\n=== Round {n}: {place} ({lat}, {lng}) ===")
     clear_alerts()
-    wake_and_unlock()
+    for _ in range(3):  # after a restart the lock screen can take a moment to go away
+        wake_and_unlock()
+        if "keyguard" not in top_activity().lower():
+            break
+        time.sleep(3)
 
-    # 1. Fresh install + setup through the real popups
+    # 1. Fresh install + setup through the real permission popups
     adb("uninstall", PKG)
     check("install APK", "Success" in adb("install", APK))
+    # Special-access pages (full-screen + draw-over-apps) are toggles inside Settings;
+    # pre-allow them so the run doesn't depend on each Android build's Settings layout.
+    adb("shell", "appops", "set", PKG, "USE_FULL_SCREEN_INTENT", "allow")
+    adb("shell", "appops", "set", PKG, "SYSTEM_ALERT_WINDOW", "allow")
     set_location(lat, lng)
-    adb("shell", "am", "start", "-n", f"{PKG}/.MainActivity")
-    time.sleep(4)
-    check("setup screen shown on first launch", screen_has("TURN ON SOS ALERTS"))
+    open_app()
+    check("setup screen shown on first launch", screen_has("TURN ON SOS ALERTS", timeout=30))
     ui_tap("TURN ON SOS ALERTS")
-    ui_tap("While using the app")
+    ui_tap("While using the app")        # location
+    ui_tap("Allow")                      # SMS
     ui_tap("Allow")                      # notifications
     ui_tap("Allow all the time")         # background location settings page
     adb("shell", "input", "keyevent", "KEYCODE_BACK")
@@ -195,50 +274,88 @@ def run_round(n, place, lat, lng):
     ui_tap("Allow")                      # battery optimisation
     time.sleep(3)
     check("location granted", granted("android.permission.ACCESS_FINE_LOCATION"))
+    check("SMS granted", granted("android.permission.SEND_SMS"))
     check("notifications granted", granted("android.permission.POST_NOTIFICATIONS"))
     check("background location granted", granted("android.permission.ACCESS_BACKGROUND_LOCATION"))
     check("battery saver exemption", PKG in adb("shell", "dumpsys", "deviceidle", "whitelist"))
-    check("SOS screen after setup", screen_has("press for help") and screen_has("on duty"))
+
+    # Emergency contact dialog appears at the end of setup. The emulator's own number
+    # (5554) is used; sent messages are checked in the phone's SMS "sent" folder.
+    check("emergency contact dialog shown", screen_has("EMERGENCY CONTACT"))
+    ui_tap("Name")
+    for word in ["Test", "%s", "Contact"]:  # type in small chunks so no keys get dropped
+        adb("shell", "input", "text", word)
+    time.sleep(1)
+    ui_tap("Phone number"); adb("shell", "input", "text", "5554")
+    time.sleep(1)
+    hide_keyboard()
+    ui_tap("SAVE")
+    time.sleep(2)
+    check("SOS screen after setup", screen_has("press for help") and screen_has("Test Contact"))
     check("listener service running", service_running())
     set_location(lat, lng)
     time.sleep(8)  # let the service get its first fix
 
     # 2. Press SOS in the app
     before_docs = len(list_alerts(token()))
-    before = sos_texts()
+    sos_before = len([b for b in sms_inbox() if "SOS! I need help" in b])
     ui_tap("SOS")
-    time.sleep(0.3)
-    ui_tap("SOS|…", timeout=2)          # panicked double tap → should not double-send
     time.sleep(8)
     docs = list_alerts(token())
     mine = [d for d in docs if d["fields"]["senderId"]["stringValue"] == device_id()]
-    check("SOS from app reaches Firebase", len(docs) == before_docs + 1 and len(mine) == 1,
-          f"{len(docs) - before_docs} new")
+    check("nearby alert reaches Firebase (exactly one)", len(mine) == 1, f"{len(mine)} from this phone")
     if mine:
         f = mine[0]["fields"]
         dist = math.dist((f["lat"]["doubleValue"], f["lng"]["doubleValue"]), (lat, lng)) * 111_320
-        check("SOS has correct location", dist < 30, f"{dist:.0f} m off")
-    check("app shows 'SOS sent'", screen_has("SOS sent"))
-    check("sender phone does NOT alert itself", not (sos_texts() - before))
+        check("alert has correct location", dist < 30, f"{dist:.0f} m off")
+    check("SOS active page shown", screen_has("I'M SAFE"))
+    check("112 call shown as DEMO", screen_has("Calling 112") and screen_has("DEMO · NO REAL CALL"))
+    check("no real phone call placed", not in_phone_call())
+    check("women's committee shown as DEMO", screen_has("DEMO · not actually sent"))
+    sms = wait_sms("SOS! I need help", sos_before)
+    check("REAL SMS with live location sent to contact", sms is not None, (sms or "none")[:70])
+    if sms:
+        m = re.search(r"q=(-?[\d.]+),(-?[\d.]+)", sms)
+        d = math.dist((float(m.group(1)), float(m.group(2))), (lat, lng)) * 111_320 if m else 1e9
+        check("SMS map link points to my location", d < 30, f"{d:.0f} m off")
+    check("sender phone does NOT alert itself", wait_alert_page(4) is None)
 
-    # 3. Alerts from other phones at various distances
+    if test_live_update:
+        upd_before = len([b for b in sms_inbox() if "live location:" in b and "update" in b])
+        log("  …waiting 2 min for the live-location update SMS")
+        upd = wait_sms("Ekta SOS update", upd_before, timeout=170)
+        check("live location update SMS after 2 min", upd is not None, (upd or "none")[:60])
+
+    safe_before = len([b for b in sms_inbox() if "I'm safe" in b])
+    ui_tap("I'M SAFE")
+    time.sleep(2)
+    check("I'M SAFE returns to SOS screen", screen_has("press for help"))
+    check("'I'm safe' SMS sent to contact", wait_sms("I'm safe", safe_before) is not None)
+
+    # 3. Alerts from other phones at various distances → full-screen page
     def expect(label, a_lat, a_lng, should_ring, **kw):
-        before = sos_texts()
         post_alert(a_lat, a_lng, **kw)
-        new = wait_new_alert(before, timeout=20 if should_ring else 12)
-        check(label, bool(new) == should_ring, ", ".join(new) if new else "no alert")
+        page = wait_alert_page(20 if should_ring else 12)
+        check(label, (page is not None) == should_ring, page or "no alert")
+        if page:
+            if not ui_tap("DISMISS", timeout=6):
+                adb("shell", "input", "keyevent", "KEYCODE_BACK")
+            for _ in range(10):  # make sure it's gone before the next case
+                if "AlertActivity" not in top_activity():
+                    break
+                time.sleep(1)
 
-    expect("110 m north → rings", *north(lat, lng, 110), True)
-    expect("190 m east → rings", *east(lat, lng, 190), True)
-    expect("230 m north → silent", *north(lat, lng, 230), False)
-    expect("700 m south → silent", *north(lat, lng, -700), False)
+    expect("110 m north → full-screen alert", *north(lat, lng, 110), True)
+    expect("450 m east → full-screen alert", *east(lat, lng, 450), True)
+    expect("560 m north → silent", *north(lat, lng, 560), False)
+    expect("1.2 km south → silent", *north(lat, lng, -1200), False)
     expect("50 m but 15 min old → silent", *north(lat, lng, 50), False, age_min=15)
 
-    # 4. Phone locked, app in background
+    # 4. Phone locked, app in background → page shows over the lock screen
     adb("shell", "input", "keyevent", "KEYCODE_HOME")
     adb("shell", "input", "keyevent", "KEYCODE_SLEEP")
     time.sleep(3)
-    expect("screen locked: 120 m → rings", *east(lat, lng, -120), True)
+    expect("screen locked: 300 m → full-screen alert", *east(lat, lng, -300), True)
     wake_and_unlock()
 
     # 5. Restart the phone; app is NOT opened afterwards
@@ -246,11 +363,18 @@ def run_round(n, place, lat, lng):
     adb("reboot")
     time.sleep(10)
     wait_boot()
-    time.sleep(15)
+    time.sleep(20)
     set_location(lat, lng)
-    time.sleep(8)
+    time.sleep(10)
     check("after restart: service running without opening app", service_running())
-    expect("after restart: 150 m → rings", *north(lat, lng, 150), True)
+    # After a restart Android hands background apps a location only after a while
+    # (the service retries every 30 s), so allow up to 3 minutes here.
+    post_alert(*north(lat, lng, 400))
+    page = wait_alert_page(180)
+    check("after restart: 400 m → full-screen alert", page is not None, page or "no alert")
+    if page:
+        if not ui_tap("DISMISS", timeout=6):
+            adb("shell", "input", "keyevent", "KEYCODE_BACK")
     wake_and_unlock()
 
 
@@ -259,7 +383,7 @@ def main():
     wait_boot()
     for i in range(rounds):
         name, lat, lng = PLACES[i % len(PLACES)]
-        run_round(i + 1, name, lat, lng)
+        run_round(i + 1, name, lat, lng, test_live_update=(i == 0))
     clear_alerts()
     passed = sum(ok for _, ok in results)
     log(f"\n=== {passed}/{len(results)} checks passed ===")

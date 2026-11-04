@@ -14,3 +14,7 @@ local.properties
 
 # Firebase config with API key — keep out of the public repo
 app/google-services.json
+
+# Python
+__pycache__/
+*.pyc

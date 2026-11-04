@@ -14,15 +14,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -34,9 +40,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
 val Ink = Color(0xFF151515)
 val SkyTop = Color(0xFF6FB1F2)
@@ -44,28 +52,42 @@ val SkyBottom = Color(0xFFA9D3F7)
 val Lime = Color(0xFFE4F25A)
 val Pink = Color(0xFFE84A8A)
 val Mono = FontFamily.Monospace
+private val Radius = ALERT_RADIUS_METERS.toInt()
 
-/** Sky gradient, planet + sparkles, and the forest along the bottom. */
+/** Sky gradient, planet + sparkles, and (optionally) the forest along the bottom. */
 @Composable
-fun IllustratedBackground(content: @Composable () -> Unit) {
+fun IllustratedBackground(forest: Boolean = true, content: @Composable () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(SkyTop, SkyBottom))),
     ) {
         Canvas(Modifier.fillMaxSize()) { drawSky() }
-        Canvas(
-            Modifier
-                .fillMaxWidth()
-                .height(260.dp)
-                .align(Alignment.BottomCenter),
-        ) { drawForest() }
+        if (forest) {
+            Canvas(
+                Modifier
+                    .fillMaxWidth()
+                    .height(260.dp)
+                    .align(Alignment.BottomCenter),
+            ) { drawForest() }
+        }
         content()
     }
 }
 
 @Composable
-fun SosScreen(status: String, sending: Boolean, listening: Boolean, onSos: () -> Unit) {
+fun SosScreen(
+    state: SosState,
+    contact: EmergencyContact?,
+    onSos: () -> Unit,
+    onSafe: () -> Unit,
+    onEndCall: () -> Unit,
+    onEditContact: () -> Unit,
+) {
+    if (state.active) {
+        ActivePage(state, contact, onSafe, onEndCall)
+        return
+    }
     IllustratedBackground {
         Column(
             Modifier
@@ -82,22 +104,176 @@ fun SosScreen(status: String, sending: Boolean, listening: Boolean, onSos: () ->
                 fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 15.sp,
                 color = Ink, letterSpacing = 0.5.sp,
             )
-            Spacer(Modifier.height(28.dp))
-            InfoColumns(listening)
-            Spacer(Modifier.height(36.dp))
-            SosButton(enabled = !sending, label = if (sending) "…" else "SOS", onClick = onSos)
+            Spacer(Modifier.height(26.dp))
+            InfoColumns(contact)
+            Spacer(Modifier.height(30.dp))
+            SosButton(onClick = onSos)
             Spacer(Modifier.height(18.dp))
             Text(
-                status,
-                fontFamily = Mono, fontSize = 13.sp, color = Ink,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.width(280.dp),
+                if (contact == null) "Add an emergency contact" else "Emergency contact: ${contact.name}",
+                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
+                textDecoration = TextDecoration.Underline, textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .clickable(onClick = onEditContact)
+                    .padding(6.dp),
+            )
+            Text(
+                "Press only in a real emergency.",
+                fontFamily = Mono, fontSize = 12.sp, color = Ink,
             )
             Spacer(Modifier.weight(1f))
-            Spacer(Modifier.height(240.dp)) // room for the forest
+            Spacer(Modifier.height(230.dp)) // room for the forest
         }
     }
 }
+
+// ---------- SOS active ----------
+
+@Composable
+private fun ActivePage(
+    state: SosState,
+    contact: EmergencyContact?,
+    onSafe: () -> Unit,
+    onEndCall: () -> Unit,
+) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
+    val elapsed = ((now - state.startedAt) / 1000).coerceAtLeast(0)
+
+    IllustratedBackground(forest = false) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(40.dp))
+            WobblyLogo("SOS")
+            Text(
+                "ACTIVE · ${clock(elapsed)}",
+                fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 16.sp,
+                color = Ink, letterSpacing = 2.sp,
+            )
+            Spacer(Modifier.height(20.dp))
+
+            DemoCallCard(elapsed, state.callEnded, onEndCall)
+            Spacer(Modifier.height(22.dp))
+
+            Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                StatusRow(state.nearby, "NEARBY PHONES", state.nearbyNote.ifBlank { "alerting everyone within $Radius m…" })
+                StatusRow(
+                    state.contactSms,
+                    "SMS → ${contact?.name?.uppercase() ?: "EMERGENCY CONTACT"}",
+                    state.contactNote,
+                )
+                StatusRow(Step.DEMO, "SMS → WOMEN'S COMMITTEE", "DEMO · not actually sent")
+            }
+            if (state.committeeMessage.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "\u201C${state.committeeMessage}\u201D",
+                    fontFamily = Mono, fontSize = 10.sp, color = Ink.copy(alpha = 0.75f),
+                    modifier = Modifier.width(320.dp).padding(start = 38.dp),
+                )
+            }
+
+            Spacer(Modifier.height(30.dp))
+            ChunkyButton(width = 260.dp, height = 78.dp, onClick = onSafe) {
+                Text("I'M SAFE", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 24.sp, color = Ink, letterSpacing = 2.sp)
+                Text("stop SOS & tell my contact", fontFamily = Mono, fontSize = 11.sp, color = Ink)
+            }
+            Spacer(Modifier.height(40.dp))
+        }
+    }
+}
+
+/** Looks like an ongoing call, but nothing is dialled. */
+@Composable
+private fun DemoCallCard(elapsed: Long, ended: Boolean, onEnd: () -> Unit) {
+    Box(Modifier.size(width = 327.dp, height = 116.dp)) {
+        Box(
+            Modifier
+                .offset(7.dp, 7.dp)
+                .size(320.dp, 109.dp)
+                .background(Pink),
+        )
+        Row(
+            Modifier
+                .size(320.dp, 109.dp)
+                .background(Ink)
+                .border(2.dp, Ink)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "DEMO · NO REAL CALL",
+                    fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 10.sp,
+                    color = Ink, letterSpacing = 1.sp,
+                    modifier = Modifier.background(Lime).padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (ended) "Call to 112 ended" else "Calling 112…",
+                    fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 22.sp, color = Color.White,
+                )
+                Text(
+                    if (ended) "Police / emergency services" else "Police / emergency services · ${clock(elapsed)}",
+                    fontFamily = Mono, fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f),
+                )
+            }
+            if (!ended) {
+                Box(
+                    Modifier
+                        .size(52.dp)
+                        .background(Pink, shape = androidx.compose.foundation.shape.CircleShape)
+                        .border(2.dp, Color.White, androidx.compose.foundation.shape.CircleShape)
+                        .clickable(onClick = onEnd)
+                        .semantics { contentDescription = "End demo call" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("END", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 12.sp, color = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatusRow(step: Step, title: String, detail: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        val (bg, mark) = when (step) {
+            Step.DONE -> Lime to "✓"
+            Step.FAILED -> Pink to "✕"
+            Step.WORKING -> SkyBottom to "…"
+            Step.DEMO -> Color.White to "D"
+            Step.IDLE -> SkyBottom to ""
+        }
+        Box(
+            Modifier
+                .size(26.dp)
+                .background(bg)
+                .border(2.dp, Ink),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(mark, fontWeight = FontWeight.Black, fontSize = 14.sp, color = Ink)
+        }
+        Column(Modifier.padding(start = 12.dp).fillMaxWidth()) {
+            Text(title, fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Ink, letterSpacing = 1.sp)
+            Text(detail, fontFamily = Mono, fontSize = 11.sp, color = Ink)
+        }
+    }
+}
+
+private fun clock(seconds: Long) = "%02d:%02d".format(seconds / 60, seconds % 60)
 
 /** Hand-drawn feeling logo: each letter tilted and nudged a little differently. */
 @Composable
@@ -120,18 +296,18 @@ fun WobblyLogo(text: String) {
 }
 
 @Composable
-private fun InfoColumns(listening: Boolean) {
+private fun InfoColumns(contact: EmergencyContact?) {
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        InfoBlock("WHO HEARS YOU", "everyone with Ekta", "within 200 metres", Modifier.weight(1f))
+        InfoBlock("WHO HEARS YOU", "everyone with Ekta", "within $Radius metres", Modifier.weight(1f))
         Box(Modifier.width(1.5.dp).height(78.dp).background(Ink))
         InfoBlock(
-            "YOUR STATUS",
-            if (listening) "on duty" else "not listening",
-            if (listening) "you'll hear nearby SOS" else "allow location access",
+            "ON SOS",
+            "112 is called (demo)",
+            if (contact == null) "+ SMS to your contact" else "+ live location SMS",
             Modifier.weight(1f),
         )
     }
@@ -157,6 +333,7 @@ fun ChunkyButton(
     width: Dp,
     height: Dp,
     enabled: Boolean = true,
+    color: Color = Lime,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
     content: @Composable () -> Unit,
@@ -177,7 +354,7 @@ fun ChunkyButton(
             modifier
                 .offset(shift, shift)
                 .size(width, height)
-                .background(if (enabled) Lime else Lime.copy(alpha = 0.85f))
+                .background(if (enabled) color else color.copy(alpha = 0.85f))
                 .border(2.dp, Ink)
                 .clickable(
                     interactionSource = interaction, indication = null,
@@ -190,12 +367,12 @@ fun ChunkyButton(
 }
 
 @Composable
-private fun SosButton(enabled: Boolean, label: String, onClick: () -> Unit) {
+private fun SosButton(onClick: () -> Unit) {
     ChunkyButton(
-        width = 230.dp, height = 120.dp, enabled = enabled, onClick = onClick,
-        modifier = Modifier.semantics { contentDescription = "SOS. Alert everyone within 200 metres" },
+        width = 230.dp, height = 120.dp, onClick = onClick,
+        modifier = Modifier.semantics { contentDescription = "SOS. Alert everyone within $Radius metres" },
     ) {
-        Text(label, fontSize = 52.sp, fontWeight = FontWeight.Black, color = Ink, letterSpacing = 6.sp)
+        Text("SOS", fontSize = 52.sp, fontWeight = FontWeight.Black, color = Ink, letterSpacing = 6.sp)
         Text("press for help", fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Ink)
     }
 }

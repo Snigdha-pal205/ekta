@@ -14,6 +14,7 @@ import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.IBinder
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -29,7 +30,7 @@ import com.google.firebase.firestore.ListenerRegistration
 /**
  * Runs in the background while the app is "on duty". It keeps track of where this
  * phone is, listens for SOS alerts in the surrounding grid cells, and raises a loud
- * notification for any alert sent within 200 m. Only the sender's location is ever
+ * full-screen alert for any SOS sent within 500 m. Only the sender's location is ever
  * uploaded; listeners do the distance check locally.
  */
 class AlertListenerService : Service() {
@@ -48,6 +49,10 @@ class AlertListenerService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private var listening = false
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val refreshRunnable = Runnable { refreshFix() }
+
     @SuppressLint("MissingPermission")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createChannels(this)
@@ -61,18 +66,51 @@ class AlertListenerService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (listening) return START_STICKY
+        listening = true
         val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 30_000)
             .setMinUpdateIntervalMillis(10_000)
             .build()
         fused.requestLocationUpdates(request, locationCallback, mainLooper)
-        // Get a precise fix right away, so listening starts even where
-        // low-power (Wi-Fi/cell) location isn't available.
-        fused.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-            .addOnSuccessListener { it?.let(::onMoved) }
+        refreshFix()
         return START_STICKY
     }
 
+    /**
+     * Gets a precise fix now, and keeps doing so: every 30 s until we have one (right
+     * after a restart Android may not give location for a while), then every 5 min if
+     * low-power updates have gone quiet. Without a position we can't watch for alerts.
+     */
+    @SuppressLint("MissingPermission")
+    private fun refreshFix() {
+        handler.removeCallbacks(refreshRunnable)
+        val last = lastLocation
+        if (last != null && System.currentTimeMillis() - last.time < REFRESH_EVERY_MS) {
+            handler.postDelayed(refreshRunnable, REFRESH_EVERY_MS)
+            return
+        }
+        try {
+            fused.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                .addOnCompleteListener { task ->
+                    val loc = if (task.isSuccessful) task.result else null
+                    if (loc != null) {
+                        onMoved(loc)
+                    } else if (lastLocation == null) {
+                        // No fresh fix yet (common right after a restart): start watching
+                        // from the phone's last known position meanwhile.
+                        fused.lastLocation.addOnSuccessListener { it?.let(::onMoved) }
+                    }
+                    handler.postDelayed(
+                        refreshRunnable, if (lastLocation == null) RETRY_EVERY_MS else REFRESH_EVERY_MS,
+                    )
+                }
+        } catch (_: Exception) {
+            handler.postDelayed(refreshRunnable, RETRY_EVERY_MS)
+        }
+    }
+
     override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
         fused.removeLocationUpdates(locationCallback)
         registration?.remove()
         super.onDestroy()
@@ -128,9 +166,9 @@ class AlertListenerService : Service() {
     }
 
     private fun showSosNotification(lat: Double, lng: Double, distance: Float, id: String) {
-        val maps = Intent(Intent.ACTION_VIEW, Uri.parse("geo:$lat,$lng?q=$lat,$lng(SOS)"))
-        val pending = PendingIntent.getActivity(
-            this, id.hashCode(), maps,
+        val page = AlertActivity.intent(this, lat, lng, distance, id)
+        val fullScreen = PendingIntent.getActivity(
+            this, id.hashCode(), page,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val n = NotificationCompat.Builder(this, SOS_CHANNEL)
@@ -141,10 +179,21 @@ class AlertListenerService : Service() {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setColor(0xFFE84A8A.toInt())
             .setVibrate(longArrayOf(0, 600, 300, 600, 300, 600))
-            .setContentIntent(pending)
+            .setContentIntent(fullScreen)
+            // Shows the alert page over the lock screen / when the screen is off.
+            .setFullScreenIntent(fullScreen, true)
             .setAutoCancel(true)
             .build()
         getSystemService(NotificationManager::class.java).notify(id.hashCode(), n)
+
+        // While the phone is in use, Android shows full-screen intents as a small
+        // banner. With "Display over other apps" we can open the full page directly.
+        if (Settings.canDrawOverlays(this)) {
+            try {
+                startActivity(page)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     private fun ongoingNotification(): Notification {
@@ -154,7 +203,7 @@ class AlertListenerService : Service() {
         return NotificationCompat.Builder(this, ONGOING_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sos)
             .setContentTitle("Ekta is listening")
-            .setContentText("You'll be alerted if someone within 200 m needs help.")
+            .setContentText("You'll be alerted if someone within 500 m needs help.")
             .setOngoing(true)
             .setContentIntent(open)
             .build()
@@ -163,8 +212,10 @@ class AlertListenerService : Service() {
     companion object {
         private const val ONGOING_ID = 1
         private const val FRESH_LOCATION_MS = 2 * 60 * 1000L
+        private const val RETRY_EVERY_MS = 30 * 1000L
+        private const val REFRESH_EVERY_MS = 5 * 60 * 1000L
         private const val ONGOING_CHANNEL = "ongoing"
-        private const val SOS_CHANNEL = "sos_alerts"
+        const val SOS_CHANNEL = "sos_alerts"
 
         fun start(context: Context) {
             try {
@@ -183,7 +234,7 @@ class AlertListenerService : Service() {
             )
             nm.createNotificationChannel(
                 NotificationChannel(SOS_CHANNEL, "SOS alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "Alerts from people within 200 m who pressed SOS"
+                    description = "Alerts from people within 500 m who pressed SOS"
                     enableVibration(true)
                     vibrationPattern = longArrayOf(0, 600, 300, 600, 300, 600)
                     setBypassDnd(true)
