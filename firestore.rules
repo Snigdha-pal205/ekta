@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /alerts/{alertId} {
+      // Anyone with the app can read alerts (the app filters by distance on-device).
+      allow read: if true;
+      // Alerts can be created with exactly these fields, never edited or deleted.
+      allow create: if request.resource.data.keys().hasOnly(
+                         ['lat', 'lng', 'accuracy', 'cell', 'senderId', 'createdAt'])
+                    && request.resource.data.lat is number
+                    && request.resource.data.lng is number
+                    && request.resource.data.cell is string
+                    && request.resource.data.senderId is string
+                    && request.resource.data.createdAt is timestamp;
+      allow update, delete: if false;
+    }
+  }
+}

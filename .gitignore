@@ -1,0 +1,16 @@
+# Build output
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+
+# Local machine config
+local.properties
+.idea/
+*.iml
+.DS_Store
+.kotlin/
+
+# Firebase config with API key — keep out of the public repo
+app/google-services.json
