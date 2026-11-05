@@ -25,7 +25,7 @@ service cloud.firestore {
 
       // Ending an alert with a PIN. Only possible with the secret key whose hash came
       // with the SOS: "cancelled" needs the cancel key, "duress" the duress key.
-      // Happens once: an alert that is already cancelled / duress can't be changed back.
+      // A cancelled alert is final; it can never become active or duress again.
       allow update: if
           (
             resource.data.get('status', 'active') == 'active'
@@ -35,6 +35,15 @@ service cloud.firestore {
               (data().status == 'cancelled' && keyHash() == resource.data.get('hashC', '-'))
               || (data().status == 'duress' && keyHash() == resource.data.get('hashD', '-'))
             )
+          )
+          // "I'm safe now" after a duress: she ends it for real with her normal PIN.
+          // Needs the CANCEL key (the duress key, already revealed, can't do this).
+          || (
+            resource.data.get('status', 'active') == 'duress'
+            && data().status == 'cancelled'
+            && changed().hasOnly(['status', 'statusKey', 'statusAt', 'lat', 'lng', 'accuracy'])
+            && data().statusKey is string
+            && keyHash() == resource.data.get('hashC', '-')
           )
           // While in duress, her live location keeps updating.
           || (

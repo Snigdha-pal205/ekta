@@ -58,6 +58,8 @@ class MainActivity : ComponentActivity() {
             var hasPins by remember { mutableStateOf(PinStore.hasPins(this)) }
             var showPinSetup by remember { mutableStateOf(false) }
             var showPinPad by remember { mutableStateOf(false) }
+            var safeNowPad by remember { mutableStateOf(false) } // hidden "I'm safe now" pad
+            var showSettings by remember { mutableStateOf(false) }
             var pinMessage by remember { mutableStateOf<String?>(null) }
             var showCancelled by remember { mutableStateOf(false) }
             val tick = resumeTick // read so the checks below refresh on resume
@@ -202,6 +204,34 @@ class MainActivity : ComponentActivity() {
                     kotlinx.coroutines.delay(2_500)
                     showCancelled = false
                 }
+            } else if (safeNowPad) {
+                // Same pad and same result screen whether or not an alert is running,
+                // so nobody watching can tell.
+                androidx.activity.compose.BackHandler { safeNowPad = false; pinMessage = null }
+                PinPadScreen(
+                    title = "I'M SAFE NOW",
+                    backLabel = "BACK",
+                    message = pinMessage,
+                    onSubmit = { pin ->
+                        when (SosSession.cancelWithPin(this, pin)) {
+                            PinStore.Result.WRONG -> pinMessage = "Wrong PIN, try again"
+                            else -> {
+                                pinMessage = null
+                                safeNowPad = false
+                                showSettings = false
+                                showCancelled = true
+                            }
+                        }
+                    },
+                    onBack = { safeNowPad = false; pinMessage = null },
+                )
+            } else if (showSettings) {
+                androidx.activity.compose.BackHandler { showSettings = false }
+                SettingsScreen(
+                    onContact = { picked = null; showContactDialog = true },
+                    onSafeNow = { pinMessage = null; safeNowPad = true },
+                    onBack = { showSettings = false },
+                )
             } else if (showPinPad && sos.active && !sos.hidden) {
                 androidx.activity.compose.BackHandler { showPinPad = false; pinMessage = null }
                 PinPadScreen(
@@ -233,6 +263,8 @@ class MainActivity : ComponentActivity() {
                     },
                     onEndCall = SosSession::endDemoCall,
                     onEditContact = { picked = null; showContactDialog = true },
+                    onSafeNow = { pinMessage = null; safeNowPad = true },
+                    onSettings = { showSettings = true },
                 )
             }
 

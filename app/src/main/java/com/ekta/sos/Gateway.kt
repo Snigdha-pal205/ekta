@@ -90,11 +90,13 @@ object Gateway {
         val who = msg.senderName.ifBlank { "Your contact" }
         val link = String.format(Locale.US, "https://maps.google.com/?q=%.6f,%.6f", msg.lat, msg.lng)
         val text = if (msg.status == AlertStatus.CANCELLED) {
-            "EKTA: $who cancelled her SOS with her PIN. She is safe. (relayed by a nearby Ekta phone)"
+            "EKTA: $who is safe, alert cancelled (she cancelled it with her PIN). (relayed by a nearby Ekta phone)"
         } else {
             "EKTA DURESS: $who was forced to cancel her SOS and may still be in danger. Do NOT call her phone. " +
                 "Last location: $link (relayed by a nearby Ekta phone)"
         }
+        DemoNotify.committee(text)
+        DemoNotify.police(text)
         ack(MeshMessage.SMS_QUEUED)
         SmsOutbox.send(app, "gw-${msg.status}-${msg.id}", msg.contactNumber, text) { ack(MeshMessage.SMS_SENT) }
     }

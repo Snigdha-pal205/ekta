@@ -261,6 +261,20 @@ def enter_pin(pin):
     ui_tap("OK", timeout=5, after=0)  # read the screen right away: "Alert cancelled" shows 2.5 s
 
 
+def long_press_sos():
+    """Long-press the SOS button (hidden "I'm safe now")."""
+    for _ in range(3):
+        m = re.search(r'text="SOS"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', ui_xml())
+        if m:
+            a, b, c, d = map(int, m.groups())
+            x, y = str((a + c) // 2), str((b + d) // 2)
+            adb("shell", "input", "swipe", x, y, x, y, "1500")
+            time.sleep(2)
+            return True
+        time.sleep(2)
+    return False
+
+
 def cancel_with_pin():
     ui_tap("CANCEL ALERT")
     enter_pin(NORMAL_PIN)
@@ -534,13 +548,13 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("wrong PIN → 'Wrong PIN, try again'", screen_has("Wrong PIN, try again"))
     check("wrong PIN → alert still active on server", doc_field(my_id, "status") == "active")
     # PIN: normal → really cancelled
-    safe_before = len([b for b in sms_inbox() if "cancelled the SOS with my PIN" in b])
+    safe_before = len([b for b in sms_inbox() if "is safe, alert cancelled" in b])
     enter_pin(NORMAL_PIN)
     check("normal PIN → 'Alert cancelled' screen", screen_has("Alert cancelled", timeout=3))
     check("normal PIN → back to home screen", screen_has("press for help", timeout=8))
     check("normal PIN → server status = cancelled",
           wait_until(lambda: doc_field(my_id, "status") == "cancelled", 30))
-    check("normal PIN → 'safe' SMS to contact", wait_sms("cancelled the SOS with my PIN", safe_before) is not None)
+    check("normal PIN → 'safe' SMS to contact", wait_sms("is safe, alert cancelled", safe_before) is not None)
 
     # PIN: duress → looks cancelled, keeps running silently
     open_app()
@@ -565,10 +579,35 @@ def run_round(n, place, lat, lng, test_live_update=False):
         check("duress → location keeps updating on server",
               wait_until(lambda: doc_field(duress_id, "statusAt") not in (None, at0), 170))
         check("duress → live location SMS keeps going", wait_sms("EKTA DURESS update", upd0, timeout=30) is not None)
-    # end the silent duress session for the rest of the test (like the 60-min window ending)
-    adb("shell", "am", "force-stop", PKG)
-    open_app()
-    time.sleep(6)
+    # Later she is really safe: hidden "I'm safe now" (long-press SOS)
+    adb("logcat", "-c")
+    long_press_sos()
+    check("long-press SOS → hidden 'I'M SAFE NOW' pad", screen_has("I'M SAFE NOW"))
+    enter_pin(DURESS_PIN)
+    check("safe-now + duress PIN again → same 'Alert cancelled' screen", screen_has("Alert cancelled", timeout=3))
+    time.sleep(5)
+    check("safe-now + duress PIN again → still duress on server", doc_field(duress_id, "status") == "duress")
+    long_press_sos()
+    enter_pin("0000")
+    check("safe-now + wrong PIN → 'Wrong PIN, try again'", screen_has("Wrong PIN, try again"))
+    safe2 = len([b for b in sms_inbox() if "is safe, alert cancelled" in b])
+    enter_pin(NORMAL_PIN)
+    check("safe-now + normal PIN → 'Alert cancelled' screen", screen_has("Alert cancelled", timeout=3))
+    check("safe-now + normal PIN → server status cancelled",
+          wait_until(lambda: doc_field(duress_id, "status") == "cancelled", 30))
+    check("safe-now + normal PIN → contact told 'is safe, alert cancelled'",
+          wait_sms("is safe, alert cancelled", safe2) is not None)
+    demo = adb("logcat", "-d", "-s", "EktaDemo")
+    check("committee + police test number informed (DEMO, not sent)",
+          "women's committee" in demo and "police test number" in demo and "is safe, alert cancelled" in demo)
+    check("duress tracking stopped after real cancel", not screen_has("CANCEL ALERT", timeout=2))
+    # Settings → I'm safe now with nothing running looks exactly the same (gives nothing away)
+    wait_until(lambda: screen_has("press for help", timeout=2), 10)
+    ui_tap("SETTINGS")
+    ui_tap("I'M SAFE NOW")
+    enter_pin(NORMAL_PIN)
+    check("Settings → I'm safe now (no alert) → same 'Alert cancelled' screen", screen_has("Alert cancelled", timeout=3))
+    wait_until(lambda: screen_has("press for help", timeout=2), 10)
 
     # 3. Alerts from other phones at various distances → full-screen page
     def expect(label, a_lat, a_lng, should_ring, **kw):
@@ -713,14 +752,14 @@ def run_round(n, place, lat, lng, test_live_update=False):
     inject(status_msg(cid, "cancelled", "forged-key", "Meera", p_lat, p_lng))
     time.sleep(3)
     check("FORGED cancel → ignored, still alarming", screen_has("SOMEONE NEARBY NEEDS HELP") and alarm_playing())
-    safe_gw = count("EKTA: Meera cancelled")
+    safe_gw = count("EKTA: Meera is safe")
     inject(status_msg(cid, "cancelled", "kc-" + cid, "Meera", p_lat, p_lng))
     check("real cancel → page says ALERT CANCELLED", screen_has("ALERT CANCELLED", timeout=8))
     check("real cancel → alarm stops", wait_until(lambda: not alarm_playing(), 8))
     check("real cancel → server status cancelled (this phone as gateway)",
           wait_until(lambda: doc_field(cid, "status") == "cancelled", 30))
     check("real cancel → gateway texts contact 'She is safe'",
-          wait_until(lambda: count("EKTA: Meera cancelled") == safe_gw + 1, 40))
+          wait_until(lambda: count("EKTA: Meera is safe") == safe_gw + 1, 40))
     ui_tap("OK")
     wait_until(lambda: "AlertActivity" not in top_activity(), 10)
 
@@ -737,7 +776,17 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("duress → server status duress", wait_until(lambda: doc_field(did2, "status") == "duress", 30))
     check("duress → gateway texts contact DURESS warning",
           wait_until(lambda: count("EKTA DURESS: Sara") == duress_gw + 1, 40))
-    dismiss_page()
+    # she's really safe later ("I'm safe now" on her phone) → cancel arrives
+    safe_gw2 = count("EKTA: Sara is safe")
+    inject(status_msg(did2, "cancelled", "kc-" + did2, "Sara", q_lat, q_lng))
+    check("duress → then real cancel: page says ALERT CANCELLED", screen_has("ALERT CANCELLED", timeout=10))
+    check("duress → then real cancel: alarm stops", wait_until(lambda: not alarm_playing(), 8))
+    check("duress → then real cancel: server status cancelled",
+          wait_until(lambda: doc_field(did2, "status") == "cancelled", 30))
+    check("duress → then real cancel: gateway texts 'is safe, alert cancelled'",
+          wait_until(lambda: count("EKTA: Sara is safe") == safe_gw2 + 1, 40))
+    ui_tap("OK")
+    wait_until(lambda: "AlertActivity" not in top_activity(), 10)
 
     # 12. Receiving phone: cancel / duress arriving from the server
     sid = f"pin-s-{n}-{int(time.time())}"
@@ -746,7 +795,13 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("server alert → alert page", wait_alert_page(25) is not None)
     patch_status(sid, "duress", "kd-" + sid, s_lat, s_lng)
     check("server duress → page shows DURESS", screen_has("Do NOT call her phone", timeout=15))
-    dismiss_page()
+    patch_status(sid, "cancelled", "kd-" + sid, s_lat, s_lng)  # duress key can't cancel
+    time.sleep(6)
+    check("server: duress key can't cancel → still DURESS", screen_has("Do NOT call her phone", timeout=5))
+    patch_status(sid, "cancelled", "kc-" + sid, s_lat, s_lng)
+    check("server duress → then real cancel: ALERT CANCELLED", screen_has("ALERT CANCELLED", timeout=15))
+    ui_tap("OK")
+    wait_until(lambda: "AlertActivity" not in top_activity(), 10)
     sid2 = f"pin-s2-{n}-{int(time.time())}"
     create_keyed(sid2, s_lat, s_lng, "kc-" + sid2, "kd-" + sid2)
     wait_alert_page(25)

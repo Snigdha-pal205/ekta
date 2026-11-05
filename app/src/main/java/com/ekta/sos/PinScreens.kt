@@ -42,7 +42,13 @@ import androidx.compose.ui.window.Dialog
 
 /** Full-screen number pad to cancel a running SOS. */
 @Composable
-fun PinPadScreen(message: String?, onSubmit: (String) -> Unit, onBack: () -> Unit) {
+fun PinPadScreen(
+    message: String?,
+    onSubmit: (String) -> Unit,
+    onBack: () -> Unit,
+    title: String = "CANCEL ALERT",
+    backLabel: String = "BACK TO SOS",
+) {
     var pin by remember { mutableStateOf("") }
 
     IllustratedBackground(forest = false) {
@@ -56,7 +62,7 @@ fun PinPadScreen(message: String?, onSubmit: (String) -> Unit, onBack: () -> Uni
         ) {
             Spacer(Modifier.height(70.dp))
             Text(
-                "CANCEL ALERT", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 24.sp,
+                title, fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 24.sp,
                 color = Ink, letterSpacing = 2.sp,
             )
             Spacer(Modifier.height(6.dp))
@@ -105,7 +111,7 @@ fun PinPadScreen(message: String?, onSubmit: (String) -> Unit, onBack: () -> Uni
             }
             Spacer(Modifier.height(26.dp))
             Text(
-                "BACK TO SOS",
+                backLabel,
                 fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
                 modifier = Modifier.clickable(onClick = onBack).padding(10.dp),
             )
@@ -237,4 +243,46 @@ private fun PinField(label: String, value: String, onChange: (String) -> Unit) {
         ),
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+/** Settings. "I'm safe now" looks and behaves the same whether or not an alert is running. */
+@Composable
+fun SettingsScreen(onContact: () -> Unit, onSafeNow: () -> Unit, onBack: () -> Unit) {
+    IllustratedBackground {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(80.dp))
+            Text("SETTINGS", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 24.sp, color = Ink, letterSpacing = 2.sp)
+            Spacer(Modifier.height(30.dp))
+            SettingsItem("EMERGENCY CONTACT", "change who gets your live location", onContact)
+            Spacer(Modifier.height(14.dp))
+            SettingsItem("I'M SAFE NOW", "end an alert with your PIN", onSafeNow)
+            Spacer(Modifier.height(30.dp))
+            Text(
+                "BACK",
+                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
+                modifier = Modifier.clickable(onClick = onBack).padding(10.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsItem(title: String, detail: String, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .width(300.dp)
+            .background(Color.White)
+            .border(2.dp, Ink)
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+    ) {
+        Text(title, fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 15.sp, color = Ink, letterSpacing = 1.sp)
+        Text(detail, fontFamily = Mono, fontSize = 11.sp, color = Ink)
+    }
 }

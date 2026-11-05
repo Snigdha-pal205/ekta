@@ -203,10 +203,13 @@ object SosSession {
     fun cancelWithPin(context: Context, pin: String): PinStore.Result {
         val app = context.applicationContext
         val result = PinStore.check(app, pin)
-        if (!_state.value.active) return result
+        val s = _state.value
+        if (!s.active) return result // nothing running: the screen still says "Alert cancelled"
         when (result) {
+            // Works from a normal alert and from a silent duress alert ("I'm safe now").
             PinStore.Result.NORMAL -> cancelForReal(app)
-            PinStore.Result.DURESS -> goDuress(app)
+            // Duress PIN again while already in duress: keep running silently, change nothing.
+            PinStore.Result.DURESS -> if (s.status != AlertStatus.DURESS) goDuress(app)
             PinStore.Result.WRONG -> Unit
         }
         return result
@@ -223,9 +226,10 @@ object SosSession {
         MeshManager.drop("sos:$id") // stop spreading the SOS
         finished += id
         broadcastStatus(app, id, AlertStatus.CANCELLED, cancelKey, s.location)
-        contact(app)?.let {
-            SmsOutbox.send(app, safeKey(id), it.number, "Ekta: ${myName(app).ifBlank { "I" }} cancelled the SOS with my PIN. I'm safe now. Thank you.")
-        }
+        val safeText = "Ekta: ${myName(app).ifBlank { "She" }} is safe, alert cancelled (cancelled with her PIN). Thank you."
+        contact(app)?.let { SmsOutbox.send(app, safeKey(id), it.number, safeText) }
+        DemoNotify.committee(safeText)
+        DemoNotify.police(safeText)
         _state.value = SosState()
     }
 
@@ -236,6 +240,8 @@ object SosSession {
         _state.update { it.copy(hidden = true, status = AlertStatus.DURESS, callEnded = true) }
         // Everyone else: she was forced to cancel. (The SOS keeps spreading too.)
         broadcastStatus(app, id, AlertStatus.DURESS, duressKey, s.location)
+        DemoNotify.committee(duressText(app, s.location))
+        DemoNotify.police(duressText(app, s.location))
         contact(app)?.let { c ->
             SmsOutbox.send(app, duressSmsKey(id), c.number, duressText(app, s.location))
             startDuressTracking(app, id, c)

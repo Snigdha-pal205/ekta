@@ -15,6 +15,14 @@ During setup she chooses two 4-digit PINs. Only salted hashes are stored on the 
 - **Duress PIN:** shows *exactly* the same "Alert cancelled" screen and returns home, but nothing is actually cancelled. Her phone stays silent (no sound, vibration, notification or SOS screen) and stops its own demo 112 call. It keeps sending her location to the mesh, the server and her contact. Status becomes `duress`; receiving phones show **"DURESS: she was forced to cancel. Do NOT call her phone."**
 - **Wrong PIN:** "Wrong PIN, try again", and the alert keeps running.
 
+### Ending a duress alert: "I'm safe now"
+When she is really safe, she opens the app and uses the hidden **I'm safe now** option: **long-press the SOS button**, or **Settings → I'm safe now**.
+- **Normal PIN:** really cancels at once. Status becomes `cancelled`, and "She is safe, alert cancelled" goes out with the same alert ID through the mesh and the server. Receiving phones stop buzzing, her emergency contact gets an SMS, and the women's committee and the police test number are informed (**demo**: logged under `adb logcat -s EktaDemo`, not sent).
+- **Duress PIN again:** the same "Alert cancelled" screen, but the alert keeps running silently.
+- **Wrong PIN:** "Wrong PIN, try again".
+- With no alert running, a correct PIN shows the same "Alert cancelled" screen, so the option looks identical either way.
+- Only the cancel key can end a duress alert (enforced by the server rules too). A cancelled alert is final.
+
 **Can't be faked:** when SOS is pressed, her phone creates two secret keys (one for cancel, one for duress) and sends only their SHA-256 hashes with the alert. A cancel/duress message must reveal the matching key. Receiving phones check it, and so do the Firestore rules (`hashing.sha256`). A stranger can't silence a real SOS, and the duress key can't be used to fake a cancel. Phones only act on changes the server has confirmed.
 
 ## No network? It still works

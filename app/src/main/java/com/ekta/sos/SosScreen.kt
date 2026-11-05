@@ -3,7 +3,9 @@ package com.ekta.sos
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -83,6 +85,8 @@ fun SosScreen(
     onCancel: () -> Unit,
     onEndCall: () -> Unit,
     onEditContact: () -> Unit,
+    onSafeNow: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     // In duress the alert keeps running, but her screen must look completely normal.
     if (state.active && !state.hidden) {
@@ -108,7 +112,7 @@ fun SosScreen(
             Spacer(Modifier.height(26.dp))
             InfoColumns(contact)
             Spacer(Modifier.height(30.dp))
-            SosButton(onClick = onSos)
+            SosButton(onClick = onSos, onLongClick = onSafeNow)
             Spacer(Modifier.height(18.dp))
             Text(
                 if (contact == null) "Add an emergency contact" else "Emergency contact: ${contact.name}",
@@ -121,6 +125,14 @@ fun SosScreen(
             Text(
                 "Press only in a real emergency.",
                 fontFamily = Mono, fontSize = 12.sp, color = Ink,
+            )
+            Text(
+                "SETTINGS",
+                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Ink,
+                letterSpacing = 1.sp, textDecoration = TextDecoration.Underline,
+                modifier = Modifier
+                    .clickable(onClick = onSettings)
+                    .padding(8.dp),
             )
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.height(230.dp)) // room for the forest
@@ -338,6 +350,7 @@ private fun InfoBlock(title: String, line1: String, line2: String, modifier: Mod
 }
 
 /** Chunky lime button with a hard black offset shadow; it "sinks" into the shadow on press. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChunkyButton(
     width: Dp,
@@ -345,6 +358,7 @@ fun ChunkyButton(
     enabled: Boolean = true,
     color: Color = Lime,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
@@ -366,9 +380,10 @@ fun ChunkyButton(
                 .size(width, height)
                 .background(if (enabled) color else color.copy(alpha = 0.85f))
                 .border(2.dp, Ink)
-                .clickable(
+                .combinedClickable(
                     interactionSource = interaction, indication = null,
-                    enabled = enabled, role = Role.Button, onClick = onClick,
+                    enabled = enabled, role = Role.Button,
+                    onLongClick = onLongClick, onClick = onClick,
                 ),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
@@ -377,9 +392,10 @@ fun ChunkyButton(
 }
 
 @Composable
-private fun SosButton(onClick: () -> Unit) {
+private fun SosButton(onClick: () -> Unit, onLongClick: () -> Unit) {
     ChunkyButton(
         width = 230.dp, height = 120.dp, onClick = onClick,
+        onLongClick = onLongClick, // hidden: "I'm safe now"
         modifier = Modifier.semantics { contentDescription = "SOS. Alert everyone within $Radius metres" },
     ) {
         Text("SOS", fontSize = 52.sp, fontWeight = FontWeight.Black, color = Ink, letterSpacing = 6.sp)
