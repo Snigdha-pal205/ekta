@@ -131,10 +131,48 @@ class AlertListenerService : Service() {
             .collection(SosRepository.COLLECTION)
             .whereIn("cell", cells)
             .addSnapshotListener { snap, _ ->
-                snap?.documentChanges
-                    ?.filter { it.type == DocumentChange.Type.ADDED }
-                    ?.forEach { handleAlert(it) }
+                snap?.documentChanges?.forEach { onAlertDoc(it) }
             }
+    }
+
+    /** A new alert, or a change to one (cancelled / duress / duress location), from the server. */
+    private fun onAlertDoc(change: DocumentChange) {
+        val doc = change.document
+        // Only trust what the server has confirmed. A local, not-yet-confirmed write (for
+        // example a forged cancel this phone tried to upload as gateway) shows up here
+        // first and is only rejected by the server afterwards.
+        if (doc.metadata.hasPendingWrites()) return
+        if (doc.getString("senderId") == SosRepository.deviceId(this)) return
+        AlertStatus.rememberHashes(doc.id, doc.getString("hashC") ?: "", doc.getString("hashD") ?: "")
+        val status = doc.getString("status") ?: AlertStatus.ACTIVE
+        if (status != AlertStatus.ACTIVE) {
+            // The server only accepts these with the right secret key, so they're genuine.
+            applyStatus(doc.id, status, doc.getDouble("lat"), doc.getDouble("lng"), doc.getLong("statusAt") ?: 0L)
+        }
+        if (change.type == DocumentChange.Type.ADDED && status != AlertStatus.CANCELLED) handleAlert(change)
+    }
+
+    /** She ended the SOS with a PIN (or it's a newer duress location). */
+    private fun applyStatus(id: String, status: String, lat: Double?, lng: Double?, at: Long) {
+        val changed = AlertStatus.set(id, status, lat, lng, at)
+        when (status) {
+            AlertStatus.CANCELLED -> {
+                MeshManager.drop("sos:$id") // stop spreading it
+                getSystemService(NotificationManager::class.java).cancel(id.hashCode())
+                // an open alert page sees the new status and stops ringing by itself
+            }
+            AlertStatus.DURESS -> if (changed && AlertStatus.wasAlerted(id)) {
+                // Bring the alert back up with the duress warning.
+                val l = AlertStatus.infos.value[id]
+                val me = lastLocation
+                val d = if (me != null && l?.lat != null && l.lng != null) {
+                    val r = FloatArray(1)
+                    Location.distanceBetween(me.latitude, me.longitude, l.lat, l.lng, r)
+                    r[0]
+                } else -1f
+                showSosNotification(l?.lat ?: 0.0, l?.lng ?: 0.0, d, id)
+            }
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -174,8 +212,18 @@ class AlertListenerService : Service() {
     private fun onMeshMessage(msg: MeshMessage) {
         when (msg.type) {
             MeshMessage.TYPE_ACK -> SosSession.onAck(msg)
+            MeshMessage.TYPE_STATUS -> {
+                if (msg.sender == SosRepository.deviceId(this)) return
+                Gateway.considerStatus(this, msg) // put it online if we have internet
+                // Act on it only if the key matches the SOS we saw (so nobody can fake a cancel).
+                if (AlertStatus.verify(msg.id, msg.status, msg.secret)) {
+                    applyStatus(msg.id, msg.status, msg.lat, msg.lng, msg.sentAt)
+                }
+            }
             MeshMessage.TYPE_SOS -> {
                 if (msg.sender == SosRepository.deviceId(this)) return
+                AlertStatus.rememberHashes(msg.id, msg.cancelHash, msg.duressHash)
+                if (AlertStatus.statusOf(msg.id) == AlertStatus.CANCELLED) return
                 if (System.currentTimeMillis() - msg.sentAt > RELAY_MAX_AGE_MS) return
                 Gateway.consider(this, msg) // uploads it if we have internet (now or later)
                 if (!seen.add(msg.id)) return // already shown via the internet
@@ -192,6 +240,8 @@ class AlertListenerService : Service() {
     }
 
     private fun showSosNotification(lat: Double, lng: Double, distance: Float, id: String, hops: Int = -1) {
+        AlertStatus.markAlerted(id)
+        val duress = AlertStatus.statusOf(id) == AlertStatus.DURESS
         val page = AlertActivity.intent(this, lat, lng, distance, id, hops)
         val fullScreen = PendingIntent.getActivity(
             this, id.hashCode(), page,
@@ -199,7 +249,7 @@ class AlertListenerService : Service() {
         )
         val n = NotificationCompat.Builder(this, SOS_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sos)
-            .setContentTitle("SOS nearby!")
+            .setContentTitle(if (duress) "DURESS: SOS nearby — do NOT call her phone" else "SOS nearby!")
             .setContentText(
                 if (distance >= 0) "Someone ${distance.toInt()} m from you needs help. Tap to see where."
                 else "Someone near you needs help. Tap to see where.",

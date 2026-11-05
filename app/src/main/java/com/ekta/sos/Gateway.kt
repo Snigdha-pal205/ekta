@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import java.text.DateFormat
 import java.util.Date
@@ -32,6 +33,72 @@ object Gateway {
         Net.onOnline { scope.launch { flush() } }
     }
 
+    private val waitingStatus = LinkedHashMap<String, MeshMessage>() // msg key -> cancel/duress to upload
+
+    /** A cancel / duress update from someone else arrived over the mesh. */
+    fun considerStatus(context: Context, msg: MeshMessage) {
+        init(context)
+        if (msg.type != MeshMessage.TYPE_STATUS) return
+        if (msg.sender == SosRepository.deviceId(app)) return
+        if (msg.status == AlertStatus.CANCELLED) waiting.remove(msg.id) // cancelled: don't upload the SOS any more
+        waitingStatus.putIfAbsent(msg.key, msg)
+        scope.launch { flush() }
+        startRetryLoop()
+    }
+
+    private suspend fun flushStatus() {
+        for (msg in waitingStatus.values.toList()) {
+            if (!busy.add(msg.key)) continue
+            try {
+                withTimeout(20_000) {
+                    SosRepository.updateStatus(
+                        msg.id, msg.status, msg.secret, msg.lat, msg.lng, msg.accuracy, msg.sentAt,
+                    ).await()
+                }
+                // We were first to get this cancel/duress online → we tell her contact.
+                waitingStatus.remove(msg.key)
+                statusGateway(msg)
+            } catch (e: FirebaseFirestoreException) {
+                when (e.code) {
+                    // Already cancelled/duress online. For duress, this is a later location point.
+                    FirebaseFirestoreException.Code.PERMISSION_DENIED -> {
+                        waitingStatus.remove(msg.key)
+                        if (msg.status == AlertStatus.DURESS) {
+                            try {
+                                SosRepository.updateDuressLocation(msg.id, msg.lat, msg.lng, msg.accuracy, msg.sentAt).await()
+                            } catch (_: Exception) {
+                            }
+                        }
+                    }
+                    // Her SOS isn't online yet: upload it first, the status follows on the next try.
+                    FirebaseFirestoreException.Code.NOT_FOUND -> Unit
+                    else -> Unit
+                }
+            } catch (_: Exception) {
+            } finally {
+                busy.remove(msg.key)
+            }
+        }
+    }
+
+    private fun statusGateway(msg: MeshMessage) {
+        val me = SosRepository.deviceId(app)
+        fun ack(sms: String) = MeshManager.originate(
+            app, MeshMessage(type = MeshMessage.TYPE_ACK, id = msg.id, gateway = me, sms = sms, status = msg.status),
+        )
+        if (msg.contactNumber.isBlank() || !SmsOutbox.canSend(app)) return ack(MeshMessage.SMS_NONE)
+        val who = msg.senderName.ifBlank { "Your contact" }
+        val link = String.format(Locale.US, "https://maps.google.com/?q=%.6f,%.6f", msg.lat, msg.lng)
+        val text = if (msg.status == AlertStatus.CANCELLED) {
+            "EKTA: $who cancelled her SOS with her PIN. She is safe. (relayed by a nearby Ekta phone)"
+        } else {
+            "EKTA DURESS: $who was forced to cancel her SOS and may still be in danger. Do NOT call her phone. " +
+                "Last location: $link (relayed by a nearby Ekta phone)"
+        }
+        ack(MeshMessage.SMS_QUEUED)
+        SmsOutbox.send(app, "gw-${msg.status}-${msg.id}", msg.contactNumber, text) { ack(MeshMessage.SMS_SENT) }
+    }
+
     /** An SOS from someone else arrived over the mesh. */
     fun consider(context: Context, msg: MeshMessage) {
         init(context)
@@ -49,9 +116,10 @@ object Gateway {
     private fun startRetryLoop() {
         if (retryJob?.isActive == true) return
         retryJob = scope.launch {
-            while (waiting.isNotEmpty()) {
+            while (waiting.isNotEmpty() || waitingStatus.isNotEmpty()) {
                 kotlinx.coroutines.delay(30_000)
                 waiting.values.removeAll { System.currentTimeMillis() - it.sentAt > RELAY_MAX_AGE_MS }
+                waitingStatus.values.removeAll { System.currentTimeMillis() - it.sentAt > RELAY_MAX_AGE_MS }
                 Net.refresh()
                 flush()
             }
@@ -60,6 +128,11 @@ object Gateway {
 
     private suspend fun flush() {
         if (!Net.online.value) return
+        flushSos()
+        flushStatus()
+    }
+
+    private suspend fun flushSos() {
         for (msg in waiting.values.toList()) {
             if (!busy.add(msg.id)) continue
             val me = SosRepository.deviceId(app)

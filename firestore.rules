@@ -2,22 +2,48 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /alerts/{alertId} {
+      function data() { return request.resource.data; }
+      function keyHash() { return hashing.sha256(data().statusKey).toHexString().lower(); }
+      function changed() { return data().diff(resource.data).affectedKeys(); }
+
       // Anyone with the app can read alerts (the app filters by distance on-device).
       allow read: if true;
-      // An alert can be created once — either by her phone ("direct") or by the first
-      // gateway phone that relayed it over the mesh ("mesh"). Never edited or deleted,
-      // which is what guarantees only one gateway texts her contact.
-      allow create: if request.resource.data.keys().hasOnly(
+
+      // An alert is created once — by her phone ("direct") or by the first gateway
+      // phone that relayed it over the mesh ("mesh").
+      allow create: if data().keys().hasOnly(
                          ['lat', 'lng', 'accuracy', 'cell', 'senderId', 'createdAt',
-                          'sentAt', 'via', 'hops', 'gateway'])
-                    && request.resource.data.lat is number
-                    && request.resource.data.lng is number
-                    && request.resource.data.cell is string
-                    && request.resource.data.senderId is string
-                    && request.resource.data.createdAt is timestamp
-                    && (!('via' in request.resource.data) || request.resource.data.via in ['direct', 'mesh'])
-                    && (!('hops' in request.resource.data) || request.resource.data.hops is int);
-      allow update, delete: if false;
+                          'sentAt', 'via', 'hops', 'gateway', 'status', 'hashC', 'hashD'])
+                    && data().lat is number
+                    && data().lng is number
+                    && data().cell is string
+                    && data().senderId is string
+                    && data().createdAt is timestamp
+                    && (!('via' in data()) || data().via in ['direct', 'mesh'])
+                    && (!('hops' in data()) || data().hops is int)
+                    && (!('status' in data()) || data().status == 'active');
+
+      // Ending an alert with a PIN. Only possible with the secret key whose hash came
+      // with the SOS: "cancelled" needs the cancel key, "duress" the duress key.
+      // Happens once: an alert that is already cancelled / duress can't be changed back.
+      allow update: if
+          (
+            resource.data.get('status', 'active') == 'active'
+            && changed().hasOnly(['status', 'statusKey', 'statusAt', 'lat', 'lng', 'accuracy'])
+            && data().statusKey is string
+            && (
+              (data().status == 'cancelled' && keyHash() == resource.data.get('hashC', '-'))
+              || (data().status == 'duress' && keyHash() == resource.data.get('hashD', '-'))
+            )
+          )
+          // While in duress, her live location keeps updating.
+          || (
+            resource.data.get('status', 'active') == 'duress'
+            && changed().hasOnly(['lat', 'lng', 'accuracy', 'statusAt'])
+            && data().lat is number && data().lng is number
+          );
+
+      allow delete: if false;
     }
   }
 }

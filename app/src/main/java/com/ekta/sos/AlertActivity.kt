@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -72,9 +75,15 @@ class AlertActivity : ComponentActivity() {
         showOverLockScreen()
         handle(intent)
         setContent {
+            val infos by AlertStatus.infos.collectAsState()
             alert?.let { a ->
+                val info = infos[a.id]
+                val status = info?.status ?: AlertStatus.ACTIVE
+                // She cancelled with her real PIN: stop ringing.
+                LaunchedEffect(status) { if (status == AlertStatus.CANCELLED) stopAlarm() }
                 AlertScreen(
-                    alert = a,
+                    alert = a.copy(lat = info?.lat ?: a.lat, lng = info?.lng ?: a.lng),
+                    status = status,
                     onOpenMap = {
                         stopAlarm()
                         try {
@@ -191,7 +200,8 @@ class AlertActivity : ComponentActivity() {
 private val AlertPink = Color(0xFFF06A9E)
 
 @Composable
-private fun AlertScreen(alert: AlertActivity.Alert, onOpenMap: () -> Unit, onDismiss: () -> Unit) {
+private fun AlertScreen(alert: AlertActivity.Alert, status: String, onOpenMap: () -> Unit, onDismiss: () -> Unit) {
+    if (status == AlertStatus.CANCELLED) return CancelledByHer(onDismiss)
     val pulse = rememberInfiniteTransition(label = "pulse")
     val t by pulse.animateFloat(
         0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart), label = "t",
@@ -211,6 +221,31 @@ private fun AlertScreen(alert: AlertActivity.Alert, onOpenMap: () -> Unit, onDis
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            if (status == AlertStatus.DURESS) {
+                Spacer(Modifier.height(16.dp))
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Ink)
+                        .padding(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        "DURESS", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 26.sp,
+                        color = Lime, letterSpacing = 4.sp,
+                    )
+                    Text(
+                        "She was forced to cancel. Do NOT call her phone.",
+                        fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                        color = Color.White, textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        "Her location keeps updating below. Go together or alert others.",
+                        fontFamily = Mono, fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
             Spacer(Modifier.weight(1f))
 
             // Pulsing rings around the "!" badge
@@ -275,6 +310,49 @@ private fun AlertScreen(alert: AlertActivity.Alert, onOpenMap: () -> Unit, onDis
             Spacer(Modifier.height(18.dp))
             ChunkyButton(width = 280.dp, height = 54.dp, color = Color.White, onClick = onDismiss) {
                 Text("DISMISS", fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Ink, letterSpacing = 2.sp)
+            }
+            Spacer(Modifier.weight(1.2f))
+        }
+    }
+}
+
+/** She ended the SOS with her real PIN. */
+@Composable
+private fun CancelledByHer(onDismiss: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(SkyBottom),
+    ) {
+        Canvas(Modifier.fillMaxSize()) { drawSky() }
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier
+                    .size(96.dp)
+                    .background(Lime, shape = androidx.compose.foundation.shape.CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { Text("✓", fontSize = 56.sp, fontWeight = FontWeight.Black, color = Ink) }
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "ALERT CANCELLED", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 22.sp,
+                color = Ink, letterSpacing = 2.sp,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "She entered her PIN and is safe. Thank you for being ready to help.",
+                fontFamily = Mono, fontSize = 14.sp, color = Ink, textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(36.dp))
+            ChunkyButton(width = 280.dp, height = 60.dp, color = Color.White, onClick = onDismiss) {
+                Text("OK", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 18.sp, color = Ink, letterSpacing = 2.sp)
             }
             Spacer(Modifier.weight(1.2f))
         }

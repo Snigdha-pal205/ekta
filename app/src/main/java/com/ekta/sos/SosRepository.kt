@@ -36,7 +36,7 @@ object SosRepository {
      * arriving through a mesh gateway can't be created twice. If she's offline the
      * Firestore SDK keeps the write and sends it as soon as there's internet.
      */
-    fun publishAlert(context: Context, id: String, loc: Location) =
+    fun publishAlert(context: Context, id: String, loc: Location, cancelHash: String, duressHash: String) =
         FirebaseFirestore.getInstance().collection(COLLECTION).document(id).set(
             mapOf(
                 "lat" to loc.latitude,
@@ -48,6 +48,9 @@ object SosRepository {
                 "sentAt" to System.currentTimeMillis(),
                 "via" to "direct",
                 "hops" to 0,
+                "status" to AlertStatus.ACTIVE,
+                "hashC" to cancelHash,
+                "hashD" to duressHash,
             ),
         )
 
@@ -65,9 +68,34 @@ object SosRepository {
                 "via" to "mesh",
                 "hops" to msg.hops,
                 "gateway" to gatewayId,
+                "status" to AlertStatus.ACTIVE,
+                "hashC" to msg.cancelHash,
+                "hashD" to msg.duressHash,
             ),
         ).await()
     }
+
+    /**
+     * Cancel / duress, proven with the secret key (the server checks its hash).
+     * Works offline too: Firestore keeps the write and sends it once online.
+     */
+    fun updateStatus(id: String, status: String, key: String, lat: Double, lng: Double, accuracy: Double, at: Long) =
+        FirebaseFirestore.getInstance().collection(COLLECTION).document(id).update(
+            mapOf(
+                "status" to status,
+                "statusKey" to key,
+                "statusAt" to at,
+                "lat" to lat,
+                "lng" to lng,
+                "accuracy" to accuracy,
+            ),
+        )
+
+    /** Later live-location points while in duress (status stays "duress"). */
+    fun updateDuressLocation(id: String, lat: Double, lng: Double, accuracy: Double, at: Long) =
+        FirebaseFirestore.getInstance().collection(COLLECTION).document(id).update(
+            mapOf("lat" to lat, "lng" to lng, "accuracy" to accuracy, "statusAt" to at),
+        )
 
     /** Who uploaded alert [id], if it's online already (null if unknown/offline). */
     suspend fun gatewayOf(id: String): String? = try {

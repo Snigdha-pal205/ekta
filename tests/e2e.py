@@ -3,7 +3,7 @@
 End-to-end test for Ekta SOS on an Android emulator against the real Firebase project.
 
 Each round: fresh install -> setup through the real permission popups -> SOS from the app
-(real nearby alert + real SMS, demo 112 call + demo committee SMS) -> I'M SAFE -> alerts from
+(real nearby alert + real SMS, demo 112 call + demo committee SMS) -> PIN cancel (wrong / normal / duress) -> alerts from
 fake nearby/far phones open the full-screen page -> locked screen -> restart.
 
 Usage: python3 tests/e2e.py [rounds]
@@ -194,7 +194,7 @@ def ui_xml():
     return adb("shell", "cat", "/sdcard/ui.xml")
 
 
-def ui_tap(pattern, timeout=12):
+def ui_tap(pattern, timeout=12, after=2):
     end = time.time() + timeout
     while time.time() < end:
         xml = ui_xml()
@@ -202,7 +202,7 @@ def ui_tap(pattern, timeout=12):
             if re.fullmatch(pattern, m.group(1), re.I):
                 a, b, c, d = map(int, m.groups()[1:])
                 adb("shell", "input", "tap", str((a + c) // 2), str((b + d) // 2))
-                time.sleep(2)
+                time.sleep(after)
                 return True
         time.sleep(1)
     return False
@@ -244,6 +244,63 @@ def wake_and_unlock():
     adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
     adb("shell", "wm", "dismiss-keyguard")
     time.sleep(1)
+
+
+NORMAL_PIN = "1234"
+DURESS_PIN = "9999"
+
+
+def sha(x):
+    import hashlib
+    return hashlib.sha256(x.encode()).hexdigest()
+
+
+def enter_pin(pin):
+    for d in pin:
+        ui_tap(d, timeout=5, after=0.3)
+    ui_tap("OK", timeout=5, after=0)  # read the screen right away: "Alert cancelled" shows 2.5 s
+
+
+def cancel_with_pin():
+    ui_tap("CANCEL ALERT")
+    enter_pin(NORMAL_PIN)
+    time.sleep(4)
+
+
+def pins_saved():
+    out = adb("shell", "run-as", PKG, "cat", "shared_prefs/ekta.xml")
+    return 'name="pin_normal"' in out and 'name="pin_duress"' in out \
+        and NORMAL_PIN not in re.findall(r'name="pin_normal">([^<]+)<', out)[0]
+
+
+def her_notifications_mention_sos():
+    out = adb("shell", "dumpsys", "notification", "--noredact")
+    texts = re.findall(r"android\.(?:title|text)=String \(([^)]*)\)", out)
+    return any(("DURESS" in t or "SOS" in t) and "listening" not in t.lower() for t in texts)
+
+
+def alarm_playing():
+    out = adb("shell", "dumpsys", "audio")
+    return bool(re.search(r"u/pid:\d+/\d+ state:started attr:AudioAttributes: usage=USAGE_ALARM", out))
+
+
+def create_keyed(doc_id, c_lat, c_lng, kc, kd):
+    body = {"fields": {
+        "lat": {"doubleValue": c_lat}, "lng": {"doubleValue": c_lng},
+        "cell": {"stringValue": f"{math.floor(c_lat / 0.01)}_{math.floor(c_lng / 0.01)}"},
+        "senderId": {"stringValue": "server-test-phone"}, "status": {"stringValue": "active"},
+        "hashC": {"stringValue": sha(kc)}, "hashD": {"stringValue": sha(kd)},
+        "createdAt": {"timestampValue": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")},
+    }}
+    http("POST", f"{DOCS}?documentId={doc_id}", body=body)
+
+
+def patch_status(doc_id, status, key, p_lat, p_lng):
+    fields = {"status": {"stringValue": status}, "statusKey": {"stringValue": key},
+              "statusAt": {"integerValue": str(int(time.time() * 1000))},
+              "lat": {"doubleValue": p_lat}, "lng": {"doubleValue": p_lng}, "accuracy": {"doubleValue": 5.0}}
+    mask = "&".join(f"updateMask.fieldPaths={k}" for k in fields)
+    http("PATCH", f"{DOCS}/{doc_id}?{mask}", body={"fields": fields})
 
 
 def airplane(on):
@@ -294,6 +351,18 @@ def wait_until(cond, timeout):
             pass
         time.sleep(3)
     return False
+
+
+def nearby_ok():
+    """Google Nearby logs 'Missing required permissions' if it refused to start the mesh."""
+    adb("logcat", "-c")
+    adb("shell", "am", "force-stop", PKG)
+    open_app()
+    time.sleep(10)
+    log_ = adb("logcat", "-d", "-s", "NearbyConnections")
+    started = "startAdvertising" in log_
+    refused = "Missing required permissions" in log_
+    return started and not refused
 
 
 def mesh_running():
@@ -374,7 +443,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     for attempt in range(3):
         ui_tap("TURN ON SOS ALERTS", timeout=8)
         ui_tap("While using the app", timeout=6)  # location
-        for _ in range(4):                          # nearby devices, notifications, SMS
+        for _ in range(6):                          # nearby devices, local network, notifications, SMS
             if not ui_tap("Allow", timeout=5):
                 break
         if ui_tap("Allow all the time", timeout=6):  # background location settings page
@@ -411,9 +480,20 @@ def run_round(n, place, lat, lng, test_live_update=False):
     hide_keyboard()
     ui_tap("SAVE")
     time.sleep(2)
+    check("PIN setup dialog shown", screen_has("CANCEL PINS"))
+    for label, value in (("Cancel PIN \\(4 digits\\)", NORMAL_PIN), ("Cancel PIN again", NORMAL_PIN),
+                         ("Duress PIN \\(4 digits\\)", DURESS_PIN)):
+        ui_tap(label)
+        adb("shell", "input", "text", value)
+        time.sleep(1)
+    hide_keyboard()
+    ui_tap("SAVE PINS")
+    time.sleep(2)
+    check("PINs saved (hashed, not plain)", pins_saved())
     check("SOS screen after setup", screen_has("press for help") and screen_has("Test Contact"))
     check("listener service running", service_running())
     check("mesh running (Bluetooth service type)", mesh_running())
+    check("mesh really started (Nearby accepted, no missing permission)", nearby_ok())
     set_location(lat, lng)
     time.sleep(8)  # let the service get its first fix
 
@@ -429,7 +509,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
         f = mine[0]["fields"]
         dist = math.dist((f["lat"]["doubleValue"], f["lng"]["doubleValue"]), (lat, lng)) * 111_320
         check("alert has correct location", dist < 30, f"{dist:.0f} m off")
-    check("SOS active page shown", screen_has("I'M SAFE"))
+    check("SOS active page shown", screen_has("CANCEL ALERT"))
     check("112 call shown as DEMO", screen_has("Calling 112") and screen_has("DEMO · NO REAL CALL"))
     check("no real phone call placed", not in_phone_call())
     check("women's committee shown as DEMO", screen_has("DEMO · not actually sent"))
@@ -442,16 +522,53 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("sender phone does NOT alert itself", wait_alert_page(4) is None)
 
     if test_live_update:
-        upd_before = len([b for b in sms_inbox() if "live location:" in b and "update" in b])
+        upd_before = len([b for b in sms_inbox() if "Ekta SOS update" in b])
         log("  …waiting 2 min for the live-location update SMS")
         upd = wait_sms("Ekta SOS update", upd_before, timeout=170)
         check("live location update SMS after 2 min", upd is not None, (upd or "none")[:60])
 
-    safe_before = len([b for b in sms_inbox() if "I'm safe" in b])
-    ui_tap("I'M SAFE")
-    time.sleep(2)
-    check("I'M SAFE returns to SOS screen", screen_has("press for help"))
-    check("'I'm safe' SMS sent to contact", wait_sms("I'm safe", safe_before) is not None)
+    # PIN: wrong → keeps running
+    my_id = last_alert_id()
+    ui_tap("CANCEL ALERT")
+    enter_pin("0000")
+    check("wrong PIN → 'Wrong PIN, try again'", screen_has("Wrong PIN, try again"))
+    check("wrong PIN → alert still active on server", doc_field(my_id, "status") == "active")
+    # PIN: normal → really cancelled
+    safe_before = len([b for b in sms_inbox() if "cancelled the SOS with my PIN" in b])
+    enter_pin(NORMAL_PIN)
+    check("normal PIN → 'Alert cancelled' screen", screen_has("Alert cancelled", timeout=3))
+    check("normal PIN → back to home screen", screen_has("press for help", timeout=8))
+    check("normal PIN → server status = cancelled",
+          wait_until(lambda: doc_field(my_id, "status") == "cancelled", 30))
+    check("normal PIN → 'safe' SMS to contact", wait_sms("cancelled the SOS with my PIN", safe_before) is not None)
+
+    # PIN: duress → looks cancelled, keeps running silently
+    open_app()
+    ui_tap("SOS")
+    time.sleep(8)
+    duress_id = last_alert_id()
+    duress_sms = len([b for b in sms_inbox() if "EKTA DURESS:" in b])
+    ui_tap("CANCEL ALERT")
+    enter_pin(DURESS_PIN)
+    check("duress PIN → same 'Alert cancelled' screen", screen_has("Alert cancelled", timeout=3))
+    check("duress PIN → back to normal home screen", screen_has("press for help", timeout=8))
+    check("duress PIN → no SOS page / 112 call visible",
+          not screen_has("CANCEL ALERT", timeout=2) and not screen_has("Calling 112", timeout=1))
+    check("duress PIN → no duress notification on her phone", not her_notifications_mention_sos())
+    check("duress PIN → server status = duress (not cancelled)",
+          wait_until(lambda: doc_field(duress_id, "status") == "duress", 30))
+    check("duress PIN → DURESS SMS to contact", wait_sms("EKTA DURESS:", duress_sms) is not None)
+    if test_live_update:
+        at0 = doc_field(duress_id, "statusAt")
+        upd0 = len([b for b in sms_inbox() if "EKTA DURESS update" in b])
+        log("  …waiting 2 min: duress keeps sending location silently")
+        check("duress → location keeps updating on server",
+              wait_until(lambda: doc_field(duress_id, "statusAt") not in (None, at0), 170))
+        check("duress → live location SMS keeps going", wait_sms("EKTA DURESS update", upd0, timeout=30) is not None)
+    # end the silent duress session for the rest of the test (like the 60-min window ending)
+    adb("shell", "am", "force-stop", PKG)
+    open_app()
+    time.sleep(6)
 
     # 3. Alerts from other phones at various distances → full-screen page
     def expect(label, a_lat, a_lng, should_ring, **kw):
@@ -498,8 +615,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("signal back: queued SMS sent automatically", ok)
     check("signal back: alert uploaded automatically", wait_until(lambda: doc_field(alert_id, "via") == "direct", 40))
     check("signal back: 112 now calling (demo)", screen_has("Calling 112"))
-    ui_tap("I'M SAFE")
-    time.sleep(2)
+    cancel_with_pin()
 
     # 6. Offline, and a nearby gateway confirms it texted her contact → no duplicate
     sos_sms = count("SOS from")
@@ -513,8 +629,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     airplane(False)
     time.sleep(45)
     check("ACK: her phone does NOT text the contact again", count("SOS from") == sos_sms)
-    ui_tap("I'M SAFE")
-    time.sleep(2)
+    cancel_with_pin()
     adb("shell", "input", "keyevent", "KEYCODE_HOME")
 
     # 7. This phone as the gateway for someone else's offline SOS
@@ -581,7 +696,66 @@ def run_round(n, place, lat, lng, test_live_update=False):
         dismiss_page()
     check("mesh SOS 2 km away → still uploaded for phones near her", wait_until(lambda: doc_field(fid, "via") == "mesh", 30))
 
-    # 11. Restart the phone; app is NOT opened afterwards
+    # 11. Receiving phone: cancel / duress over the mesh, forged cancel ignored
+    def sos_with_keys(mid, m_lat, m_lng, name, kc, kd, hops=0):
+        m = mesh_sos(mid, m_lat, m_lng, name, hops)
+        m[0]["hc"], m[0]["hd"] = sha(kc), sha(kd)
+        return m
+
+    def status_msg(mid, status, key, name, m_lat, m_lng):
+        return [{"t": "status", "id": mid, "h": 1, "s": f"{name.lower()}-phone", "la": m_lat, "lo": m_lng,
+                 "ac": 8, "ts": int(time.time() * 1000), "n": name, "cp": "5554", "st": status, "k": key}]
+
+    cid = f"pin-c-{n}-{int(time.time())}"
+    p_lat, p_lng = north(lat, lng, 120)
+    inject(sos_with_keys(cid, p_lat, p_lng, "Meera", "kc-" + cid, "kd-" + cid))
+    check("mesh SOS with keys → alert page", wait_alert_page(20) is not None)
+    inject(status_msg(cid, "cancelled", "forged-key", "Meera", p_lat, p_lng))
+    time.sleep(3)
+    check("FORGED cancel → ignored, still alarming", screen_has("SOMEONE NEARBY NEEDS HELP") and alarm_playing())
+    safe_gw = count("EKTA: Meera cancelled")
+    inject(status_msg(cid, "cancelled", "kc-" + cid, "Meera", p_lat, p_lng))
+    check("real cancel → page says ALERT CANCELLED", screen_has("ALERT CANCELLED", timeout=8))
+    check("real cancel → alarm stops", wait_until(lambda: not alarm_playing(), 8))
+    check("real cancel → server status cancelled (this phone as gateway)",
+          wait_until(lambda: doc_field(cid, "status") == "cancelled", 30))
+    check("real cancel → gateway texts contact 'She is safe'",
+          wait_until(lambda: count("EKTA: Meera cancelled") == safe_gw + 1, 40))
+    ui_tap("OK")
+    wait_until(lambda: "AlertActivity" not in top_activity(), 10)
+
+    did2 = f"pin-d-{n}-{int(time.time())}"
+    q_lat, q_lng = east(lat, lng, 150)
+    inject(sos_with_keys(did2, q_lat, q_lng, "Sara", "kc-" + did2, "kd-" + did2))
+    if wait_alert_page(20):
+        dismiss_page()
+    duress_gw = count("EKTA DURESS: Sara")
+    inject(status_msg(did2, "duress", "kd-" + did2, "Sara", q_lat, q_lng))
+    check("duress → alert page re-opens", wait_alert_page(20) is not None)
+    check("duress → 'DURESS' + 'Do NOT call her phone'",
+          screen_has("DURESS") and screen_has("Do NOT call her phone"))
+    check("duress → server status duress", wait_until(lambda: doc_field(did2, "status") == "duress", 30))
+    check("duress → gateway texts contact DURESS warning",
+          wait_until(lambda: count("EKTA DURESS: Sara") == duress_gw + 1, 40))
+    dismiss_page()
+
+    # 12. Receiving phone: cancel / duress arriving from the server
+    sid = f"pin-s-{n}-{int(time.time())}"
+    s_lat, s_lng = north(lat, lng, 200)
+    create_keyed(sid, s_lat, s_lng, "kc-" + sid, "kd-" + sid)
+    check("server alert → alert page", wait_alert_page(25) is not None)
+    patch_status(sid, "duress", "kd-" + sid, s_lat, s_lng)
+    check("server duress → page shows DURESS", screen_has("Do NOT call her phone", timeout=15))
+    dismiss_page()
+    sid2 = f"pin-s2-{n}-{int(time.time())}"
+    create_keyed(sid2, s_lat, s_lng, "kc-" + sid2, "kd-" + sid2)
+    wait_alert_page(25)
+    patch_status(sid2, "cancelled", "kc-" + sid2, s_lat, s_lng)
+    check("server cancel → page says ALERT CANCELLED", screen_has("ALERT CANCELLED", timeout=15))
+    ui_tap("OK")
+    wait_until(lambda: "AlertActivity" not in top_activity(), 10)
+
+    # 13. Restart the phone; app is NOT opened afterwards
     power_cycle()
     set_location(lat, lng)
     time.sleep(10)

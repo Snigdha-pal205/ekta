@@ -80,12 +80,13 @@ fun SosScreen(
     state: SosState,
     contact: EmergencyContact?,
     onSos: () -> Unit,
-    onSafe: () -> Unit,
+    onCancel: () -> Unit,
     onEndCall: () -> Unit,
     onEditContact: () -> Unit,
 ) {
-    if (state.active) {
-        ActivePage(state, contact, onSafe, onEndCall)
+    // In duress the alert keeps running, but her screen must look completely normal.
+    if (state.active && !state.hidden) {
+        ActivePage(state, contact, onCancel, onEndCall)
         return
     }
     IllustratedBackground {
@@ -133,7 +134,7 @@ fun SosScreen(
 private fun ActivePage(
     state: SosState,
     contact: EmergencyContact?,
-    onSafe: () -> Unit,
+    onCancel: () -> Unit,
     onEndCall: () -> Unit,
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -187,9 +188,9 @@ private fun ActivePage(
             }
 
             Spacer(Modifier.height(30.dp))
-            ChunkyButton(width = 260.dp, height = 78.dp, onClick = onSafe) {
-                Text("I'M SAFE", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 24.sp, color = Ink, letterSpacing = 2.sp)
-                Text("stop SOS & tell my contact", fontFamily = Mono, fontSize = 11.sp, color = Ink)
+            ChunkyButton(width = 260.dp, height = 78.dp, color = Color.White, onClick = onCancel) {
+                Text("CANCEL ALERT", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 22.sp, color = Ink, letterSpacing = 2.sp)
+                Text("needs your PIN", fontFamily = Mono, fontSize = 11.sp, color = Ink)
             }
             Spacer(Modifier.height(40.dp))
         }

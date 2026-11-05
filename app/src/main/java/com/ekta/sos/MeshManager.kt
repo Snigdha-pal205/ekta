@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.StateFlow
  */
 object MeshManager {
     private const val SERVICE_ID = "com.ekta.sos.mesh"
+    /** New runtime permission on Android 17+; Nearby refuses to start without it. */
+    const val ACCESS_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK"
     const val MAX_HOPS = 8
     private const val RELAY_WINDOW_MS = 30 * 60 * 1000L
     private const val TICK_MS = 15_000L
@@ -74,6 +76,7 @@ object MeshManager {
                 ok(Manifest.permission.BLUETOOTH_CONNECT))
         ) return false
         if (Build.VERSION.SDK_INT >= 33 && !ok(Manifest.permission.NEARBY_WIFI_DEVICES)) return false
+        if (Build.VERSION.SDK_INT >= 37 && !ok(ACCESS_LOCAL_NETWORK)) return false
         return true
     }
 
@@ -97,6 +100,9 @@ object MeshManager {
             hold(msg)
         }
     }
+
+    /** Stop passing on a message (e.g. an SOS that was cancelled). */
+    fun drop(key: String) = handler.post { held.remove(key) }
 
     // ---------- holding & pushing ----------
 

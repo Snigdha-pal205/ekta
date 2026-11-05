@@ -9,9 +9,12 @@ import org.json.JSONObject
  *  - SOS: someone pressed SOS. Carries her location and who to text, so the first phone
  *    with signal (the "gateway") can upload it and SMS her emergency contact.
  *  - ACK: a gateway got it onto the internet. Travels back so her phone can show it.
+ *  - STATUS: she ended the SOS with a PIN — "cancelled" (normal PIN) or "duress"
+ *    (forced to cancel; also carries her latest location). It reveals a secret key
+ *    whose hash came with the SOS, so nobody else can fake a cancel.
  */
 data class MeshMessage(
-    val type: String,          // TYPE_SOS or TYPE_ACK
+    val type: String,          // TYPE_SOS, TYPE_ACK or TYPE_STATUS
     val id: String,            // the alert id (same id for the SOS and its ACKs)
     val sender: String = "",   // device id of the phone that pressed SOS
     val lat: Double = 0.0,
@@ -24,23 +27,40 @@ data class MeshMessage(
     val contactNumber: String = "",
     val gateway: String = "",  // ACK: device id of the gateway phone
     val sms: String = "",      // ACK: SMS_SENT / SMS_QUEUED / SMS_NONE
+    val cancelHash: String = "", // SOS: sha256 of the cancel key
+    val duressHash: String = "", // SOS: sha256 of the duress key
+    val status: String = "",   // STATUS: cancelled / duress. ACK: which message the SMS was for ("" = the SOS)
+    val secret: String = "",   // STATUS: the revealed key
 ) {
     /** One key per distinct message, so each is passed on only once per phone. */
-    val key get() = if (type == TYPE_ACK) "ack:$id:$sms" else "sos:$id"
+    val key get() = when (type) {
+        TYPE_ACK -> "ack:$id:$status:$sms"
+        TYPE_STATUS -> "st:$id:$status:$sentAt"
+        else -> "sos:$id"
+    }
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("t", type); put("id", id); put("h", hops)
-        if (type == TYPE_SOS) {
-            put("s", sender); put("la", lat); put("lo", lng); put("ac", accuracy); put("ts", sentAt)
-            put("n", senderName); put("cn", contactName); put("cp", contactNumber)
-        } else {
-            put("g", gateway); put("sms", sms)
+        when (type) {
+            TYPE_SOS -> {
+                put("s", sender); put("la", lat); put("lo", lng); put("ac", accuracy); put("ts", sentAt)
+                put("n", senderName); put("cn", contactName); put("cp", contactNumber)
+                put("hc", cancelHash); put("hd", duressHash)
+            }
+            TYPE_STATUS -> {
+                put("s", sender); put("la", lat); put("lo", lng); put("ac", accuracy); put("ts", sentAt)
+                put("n", senderName); put("cp", contactNumber); put("st", status); put("k", secret)
+            }
+            else -> {
+                put("g", gateway); put("sms", sms); put("st", status)
+            }
         }
     }
 
     companion object {
         const val TYPE_SOS = "sos"
         const val TYPE_ACK = "ack"
+        const val TYPE_STATUS = "status"
         const val SMS_SENT = "sent"
         const val SMS_QUEUED = "queued"
         const val SMS_NONE = "none"
@@ -59,6 +79,10 @@ data class MeshMessage(
             contactNumber = o.optString("cp"),
             gateway = o.optString("g"),
             sms = o.optString("sms"),
+            cancelHash = o.optString("hc"),
+            duressHash = o.optString("hd"),
+            status = o.optString("st"),
+            secret = o.optString("k"),
         )
 
         fun encode(list: Collection<MeshMessage>): ByteArray =
@@ -68,7 +92,7 @@ data class MeshMessage(
             val arr = JSONArray(String(bytes))
             (0 until arr.length()).mapNotNull {
                 try { fromJson(arr.getJSONObject(it)) } catch (_: Exception) { null }
-            }.filter { it.type == TYPE_SOS || it.type == TYPE_ACK }
+            }.filter { it.type == TYPE_SOS || it.type == TYPE_ACK || it.type == TYPE_STATUS }
         } catch (_: Exception) {
             emptyList()
         }

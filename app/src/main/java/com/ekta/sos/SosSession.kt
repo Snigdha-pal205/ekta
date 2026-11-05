@@ -40,6 +40,8 @@ data class SosState(
     val liveUpdatesSent: Int = 0,
     val committeeMessage: String = "",
     val callEnded: Boolean = false,
+    val status: String = AlertStatus.ACTIVE, // active / duress (cancelled resets the state)
+    val hidden: Boolean = false,             // duress: alert keeps running but her screen looks normal
 )
 
 data class EmergencyContact(val name: String, val number: String)
@@ -59,6 +61,16 @@ object SosSession {
     val state: StateFlow<SosState> = _state
     private var liveJob: Job? = null
     private var watchJob: Job? = null
+
+    /** Secret keys for the running alert. Only their hashes leave the phone with the SOS. */
+    private var cancelKey = ""
+    private var duressKey = ""
+
+    /** Alerts we cancelled, so a late "SMS sent" note from a gateway can still be matched. */
+    private val finished = HashSet<String>()
+
+    /** How long silent duress tracking keeps sending her location. */
+    private const val DURESS_TRACK_MS = 60 * 60 * 1000L
 
     // ---------- Emergency contact & name ----------
 
@@ -82,10 +94,19 @@ object SosSession {
     // ---------- Start / stop ----------
 
     fun start(context: Context) {
-        if (_state.value.active) return
+        val cur = _state.value
+        if (cur.active) {
+            // SOS pressed again while silently in duress: show the SOS page again.
+            if (cur.hidden) _state.update { it.copy(hidden = false) }
+            return
+        }
         val app = context.applicationContext
         Net.init(app)
         val id = UUID.randomUUID().toString()
+        cancelKey = PinStore.randomHex(16)
+        duressKey = PinStore.randomHex(16)
+        val cancelHash = PinStore.sha256Hex(cancelKey)
+        val duressHash = PinStore.sha256Hex(duressKey)
         app.getSharedPreferences("ekta", Context.MODE_PRIVATE).edit().putString("last_alert_id", id).apply()
         _state.value = SosState(
             active = true,
@@ -124,6 +145,7 @@ object SosSession {
                         sentAt = System.currentTimeMillis(), hops = 0,
                         senderName = myName(app),
                         contactName = contact?.name ?: "", contactNumber = contact?.number ?: "",
+                        cancelHash = cancelHash, duressHash = duressHash,
                     ),
                 )
                 _state.update { it.copy(meshNote = "looking for Ekta phones in Bluetooth / Wi-Fi range…") }
@@ -132,7 +154,7 @@ object SosSession {
             }
 
             // 2. Internet: upload now, or automatically once online (real)
-            SosRepository.publishAlert(app, id, loc)
+            SosRepository.publishAlert(app, id, loc, cancelHash, duressHash)
                 .addOnSuccessListener {
                     _state.update {
                         if (it.alertId != id) it
@@ -171,25 +193,119 @@ object SosSession {
         }
     }
 
-    /** "I'm safe": stop updates and let the contact know (sent whenever there's signal). */
-    fun stop(context: Context) {
+    /**
+     * She typed a PIN on the cancel pad.
+     *  NORMAL → really cancel: tell everyone (mesh + server) and text "I'm safe".
+     *  DURESS → her screen shows the same "Alert cancelled", but the alert keeps running
+     *           silently and everyone is told she was forced to cancel.
+     *  WRONG  → nothing changes.
+     */
+    fun cancelWithPin(context: Context, pin: String): PinStore.Result {
         val app = context.applicationContext
+        val result = PinStore.check(app, pin)
+        if (!_state.value.active) return result
+        when (result) {
+            PinStore.Result.NORMAL -> cancelForReal(app)
+            PinStore.Result.DURESS -> goDuress(app)
+            PinStore.Result.WRONG -> Unit
+        }
+        return result
+    }
+
+    private fun cancelForReal(app: Context) {
         val s = _state.value
+        val id = s.alertId
         liveJob?.cancel()
         watchJob?.cancel()
-        SmsOutbox.cancel(firstKey(s.alertId))
-        SmsOutbox.cancel(updateKey(s.alertId))
-        val contact = contact(app)
-        if (s.active && contact != null && SmsOutbox.canSend(app)) {
-            SmsOutbox.send(app, "safe-${s.alertId}", contact.number, "Ekta: I'm safe now. Thank you for checking on me.")
+        SmsOutbox.cancel(firstKey(id))
+        SmsOutbox.cancel(updateKey(id))
+        SmsOutbox.cancel(duressSmsKey(id))
+        MeshManager.drop("sos:$id") // stop spreading the SOS
+        finished += id
+        broadcastStatus(app, id, AlertStatus.CANCELLED, cancelKey, s.location)
+        contact(app)?.let {
+            SmsOutbox.send(app, safeKey(id), it.number, "Ekta: ${myName(app).ifBlank { "I" }} cancelled the SOS with my PIN. I'm safe now. Thank you.")
         }
         _state.value = SosState()
+    }
+
+    private fun goDuress(app: Context) {
+        val s = _state.value
+        val id = s.alertId
+        // Her phone: looks exactly like a normal cancel. No sound, vibration or text.
+        _state.update { it.copy(hidden = true, status = AlertStatus.DURESS, callEnded = true) }
+        // Everyone else: she was forced to cancel. (The SOS keeps spreading too.)
+        broadcastStatus(app, id, AlertStatus.DURESS, duressKey, s.location)
+        contact(app)?.let { c ->
+            SmsOutbox.send(app, duressSmsKey(id), c.number, duressText(app, s.location))
+            startDuressTracking(app, id, c)
+        } ?: startDuressTracking(app, id, null)
+    }
+
+    /** Send a cancel / duress update through the Bluetooth mesh and the server. */
+    private fun broadcastStatus(app: Context, id: String, status: String, key: String, loc: Location?) {
+        val now = System.currentTimeMillis()
+        val lat = loc?.latitude ?: 0.0
+        val lng = loc?.longitude ?: 0.0
+        val acc = loc?.accuracy?.toDouble() ?: 0.0
+        MeshManager.originate(
+            app,
+            MeshMessage(
+                type = MeshMessage.TYPE_STATUS, id = id, sender = SosRepository.deviceId(app),
+                lat = lat, lng = lng, accuracy = acc, sentAt = now,
+                senderName = myName(app), contactNumber = contact(app)?.number ?: "",
+                status = status, secret = key,
+            ),
+        )
+        SosRepository.updateStatus(id, status, key, lat, lng, acc, now) // queued if offline
+    }
+
+    /** Duress: keep sending her location silently (mesh + server + SMS to her contact). */
+    private fun startDuressTracking(app: Context, id: String, contact: EmergencyContact?) {
+        liveJob?.cancel()
+        liveJob = scope.launch {
+            val started = System.currentTimeMillis()
+            while (isActive && System.currentTimeMillis() - started < DURESS_TRACK_MS) {
+                delay(LIVE_UPDATE_EVERY_MS)
+                val loc = try { SosRepository.currentLocation(app) } catch (_: Exception) { null } ?: continue
+                _state.update { it.copy(location = loc) }
+                val now = System.currentTimeMillis()
+                MeshManager.originate(
+                    app,
+                    MeshMessage(
+                        type = MeshMessage.TYPE_STATUS, id = id, sender = SosRepository.deviceId(app),
+                        lat = loc.latitude, lng = loc.longitude, accuracy = loc.accuracy.toDouble(), sentAt = now,
+                        senderName = myName(app), contactNumber = contact?.number ?: "",
+                        status = AlertStatus.DURESS, secret = duressKey,
+                    ),
+                )
+                SosRepository.updateDuressLocation(id, loc.latitude, loc.longitude, loc.accuracy.toDouble(), now)
+                contact?.let {
+                    SmsOutbox.send(app, updateKey(id), it.number, "EKTA DURESS update - live location: ${mapsLink(loc)} Do NOT call her phone.")
+                }
+            }
+            // Tracking window over: end quietly.
+            if (_state.value.alertId == id) {
+                watchJob?.cancel()
+                _state.value = SosState()
+            }
+        }
+    }
+
+    private fun duressText(app: Context, loc: Location?): String {
+        val who = myName(app).ifBlank { "She" }
+        val where = loc?.let { " Live location: ${mapsLink(it)}" } ?: ""
+        return "EKTA DURESS: $who was forced to cancel her SOS and may still be in danger. Do NOT call her phone.$where"
     }
 
     fun endDemoCall() = _state.update { it.copy(callEnded = true) }
 
     /** A gateway phone got our alert online (and maybe texted our contact). */
     fun onAck(ack: MeshMessage) {
+        // A gateway texted her contact about the cancel / duress: don't text it again.
+        if (ack.sms == MeshMessage.SMS_SENT && ack.status == AlertStatus.CANCELLED) SmsOutbox.cancel(safeKey(ack.id))
+        if (ack.sms == MeshMessage.SMS_SENT && ack.status == AlertStatus.DURESS) SmsOutbox.cancel(duressSmsKey(ack.id))
+        if (ack.status.isNotEmpty()) return
         _state.update { s ->
             if (!s.active || ack.id != s.alertId) return@update s
             var next = s
@@ -210,6 +326,8 @@ object SosSession {
 
     private fun firstKey(id: String) = "sos-$id"
     private fun updateKey(id: String) = "upd-$id"
+    private fun safeKey(id: String) = "safe-$id"
+    private fun duressSmsKey(id: String) = "duress-$id"
 
     private fun mapsLink(loc: Location) =
         String.format(Locale.US, "https://maps.google.com/?q=%.6f,%.6f", loc.latitude, loc.longitude)

@@ -27,8 +27,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 
-/** 2 = added Bluetooth mesh (offline SOS). */
-private const val SETUP_VERSION = 2
+/** 2 = added Bluetooth mesh (offline SOS). 3 = added cancel / duress PINs. */
+private const val SETUP_VERSION = 3
 
 class MainActivity : ComponentActivity() {
 
@@ -55,6 +55,11 @@ class MainActivity : ComponentActivity() {
             var contact by remember { mutableStateOf(SosSession.contact(this)) }
             var showContactDialog by remember { mutableStateOf(false) }
             var picked by remember { mutableStateOf<EmergencyContact?>(null) }
+            var hasPins by remember { mutableStateOf(PinStore.hasPins(this)) }
+            var showPinSetup by remember { mutableStateOf(false) }
+            var showPinPad by remember { mutableStateOf(false) }
+            var pinMessage by remember { mutableStateOf<String?>(null) }
+            var showCancelled by remember { mutableStateOf(false) }
             val tick = resumeTick // read so the checks below refresh on resume
 
             fun finishSetup() {
@@ -62,6 +67,7 @@ class MainActivity : ComponentActivity() {
                 setupMessage = null
                 setupDone = true
                 if (contact == null) showContactDialog = true
+                else if (!hasPins) showPinSetup = true
             }
 
             // ---- Contact picker (no READ_CONTACTS needed: the picker grants this one row) ----
@@ -184,16 +190,47 @@ class MainActivity : ComponentActivity() {
                         sms = hasSms(),
                         mesh = MeshManager.hasPermissions(this) && bluetoothOn(),
                         contact = contact,
+                        pins = hasPins,
                     ),
                     message = setupMessage,
                     onTurnOn = ::startSetup,
+                )
+            } else if (showCancelled) {
+                AlertCancelledScreen()
+                // Same screen and timing for the normal and the duress PIN, then home.
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(2_500)
+                    showCancelled = false
+                }
+            } else if (showPinPad && sos.active && !sos.hidden) {
+                androidx.activity.compose.BackHandler { showPinPad = false; pinMessage = null }
+                PinPadScreen(
+                    message = pinMessage,
+                    onSubmit = { pin ->
+                        when (SosSession.cancelWithPin(this, pin)) {
+                            PinStore.Result.WRONG -> pinMessage = "Wrong PIN, try again"
+                            else -> {
+                                pinMessage = null
+                                showPinPad = false
+                                showCancelled = true
+                            }
+                        }
+                    },
+                    onBack = { showPinPad = false; pinMessage = null },
                 )
             } else {
                 SosScreen(
                     state = sos,
                     contact = contact,
                     onSos = { SosSession.start(this) },
-                    onSafe = { SosSession.stop(this) },
+                    onCancel = {
+                        if (PinStore.hasPins(this)) {
+                            pinMessage = null
+                            showPinPad = true
+                        } else {
+                            showPinSetup = true // no PINs yet: set them, then cancel
+                        }
+                    },
                     onEndCall = SosSession::endDemoCall,
                     onEditContact = { picked = null; showContactDialog = true },
                 )
@@ -216,8 +253,20 @@ class MainActivity : ComponentActivity() {
                         SosSession.saveContact(this, myName, name, number)
                         contact = SosSession.contact(this)
                         showContactDialog = false
+                        if (!hasPins) showPinSetup = true
                     },
                     onDismiss = { showContactDialog = false },
+                )
+            }
+
+            if (showPinSetup) {
+                PinSetupDialog(
+                    onSave = { normal, duress ->
+                        PinStore.save(this, normal, duress)
+                        hasPins = true
+                        showPinSetup = false
+                    },
+                    onDismiss = { showPinSetup = false },
                 )
             }
         }
@@ -272,6 +321,7 @@ class MainActivity : ComponentActivity() {
             add(Manifest.permission.POST_NOTIFICATIONS)
             add(Manifest.permission.NEARBY_WIFI_DEVICES)
         }
+        if (Build.VERSION.SDK_INT >= 37) add(MeshManager.ACCESS_LOCAL_NETWORK)
     }.toTypedArray()
 
     private fun allForegroundGranted() = foregroundPermissions().all(::granted)

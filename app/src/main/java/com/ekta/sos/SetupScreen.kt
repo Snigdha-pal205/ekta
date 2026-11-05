@@ -28,6 +28,7 @@ data class SetupStatus(
     val sms: Boolean,
     val mesh: Boolean,
     val contact: EmergencyContact?,
+    val pins: Boolean,
 )
 
 /** First-run screen: one button walks through every permission the app needs. */
@@ -66,6 +67,7 @@ fun SetupScreen(status: SetupStatus, message: String?, onTurnOn: () -> Unit) {
                     s(status.contact != null), "EMERGENCY CONTACT",
                     status.contact?.let { "${it.name} · ${it.number}" } ?: "who gets your live location",
                 )
+                StatusRow(s(status.pins), "CANCEL PINS", "a PIN to cancel, and a secret duress PIN")
             }
 
             Spacer(Modifier.height(28.dp))
