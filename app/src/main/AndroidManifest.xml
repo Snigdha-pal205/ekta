@@ -60,7 +60,7 @@
             android:name=".AlertActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:taskAffinity="com.ekta.sos.alert" />
@@ -69,6 +69,22 @@
             android:name=".AlertListenerService"
             android:exported="false"
             android:foregroundServiceType="location|connectedDevice" />
+
+        <receiver
+            android:name=".StopSoundReceiver"
+            android:exported="false" />
+
+        <!-- Push alerts from the server (FCM) -->
+        <service
+            android:name=".EktaMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="safeher_alerts" />
 
         <receiver
             android:name=".BootReceiver"

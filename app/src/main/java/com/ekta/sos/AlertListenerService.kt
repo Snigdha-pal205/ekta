@@ -13,6 +13,7 @@ import android.location.Location
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
@@ -71,8 +72,16 @@ class AlertListenerService : Service() {
         Net.init(this)
         Gateway.init(this)
         MeshManager.start(this, ::onMeshMessage)
+        if (intent?.action == ACTION_PUSH) intent.extras?.let(::onPush)
         if (listening) return START_STICKY
         listening = true
+        // Make sure this phone has a push address (FCM token) for server alerts.
+        try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { t ->
+                getSharedPreferences("ekta", MODE_PRIVATE).edit().putString("fcm_token", t).apply()
+            }
+        } catch (_: Exception) {
+        }
         val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 30_000)
             .setMinUpdateIntervalMillis(10_000)
             .build()
@@ -142,14 +151,50 @@ class AlertListenerService : Service() {
         // example a forged cancel this phone tried to upload as gateway) shows up here
         // first and is only rejected by the server afterwards.
         if (doc.metadata.hasPendingWrites()) return
-        if (doc.getString("senderId") == SosRepository.deviceId(this)) return
-        AlertStatus.rememberHashes(doc.id, doc.getString("hashC") ?: "", doc.getString("hashD") ?: "")
-        val status = doc.getString("status") ?: AlertStatus.ACTIVE
-        if (status != AlertStatus.ACTIVE) {
-            // The server only accepts these with the right secret key, so they're genuine.
-            applyStatus(doc.id, status, doc.getDouble("lat"), doc.getDouble("lng"), doc.getLong("statusAt") ?: 0L)
+        onServerAlert(
+            id = doc.id,
+            senderId = doc.getString("senderId") ?: "",
+            lat = doc.getDouble("lat"),
+            lng = doc.getDouble("lng"),
+            createdAt = doc.getTimestamp("createdAt")?.toDate()?.time,
+            status = doc.getString("status") ?: AlertStatus.ACTIVE,
+            statusAt = doc.getLong("statusAt") ?: 0L,
+            cancelHash = doc.getString("hashC") ?: "",
+            duressHash = doc.getString("hashD") ?: "",
+            isNew = change.type == DocumentChange.Type.ADDED,
+        )
+    }
+
+    /**
+     * An alert from the server — through the live Firestore listener or a push (FCM).
+     * Both are server-confirmed, so cancel / duress here are genuine.
+     */
+    private fun onServerAlert(
+        id: String, senderId: String, lat: Double?, lng: Double?, createdAt: Long?,
+        status: String, statusAt: Long, cancelHash: String, duressHash: String, isNew: Boolean,
+    ) {
+        if (senderId == SosRepository.deviceId(this)) return // never alert her own phone
+        AlertStatus.rememberHashes(id, cancelHash, duressHash)
+        if (status != AlertStatus.ACTIVE) applyStatus(id, status, lat, lng, statusAt)
+        if (isNew && status != AlertStatus.CANCELLED && lat != null && lng != null && createdAt != null) {
+            handleAlert(id, lat, lng, createdAt)
         }
-        if (change.type == DocumentChange.Type.ADDED && status != AlertStatus.CANCELLED) handleAlert(change)
+    }
+
+    /** A push from the server (FCM), forwarded by [EktaMessagingService]. */
+    private fun onPush(data: Bundle) {
+        onServerAlert(
+            id = data.getString("id") ?: return,
+            senderId = data.getString("senderId") ?: "",
+            lat = data.getString("lat")?.toDoubleOrNull(),
+            lng = data.getString("lng")?.toDoubleOrNull(),
+            createdAt = data.getString("createdAt")?.toLongOrNull() ?: System.currentTimeMillis(),
+            status = data.getString("status") ?: AlertStatus.ACTIVE,
+            statusAt = data.getString("statusAt")?.toLongOrNull() ?: System.currentTimeMillis(),
+            cancelHash = data.getString("hashC") ?: "",
+            duressHash = data.getString("hashD") ?: "",
+            isNew = true,
+        )
     }
 
     /** She ended the SOS with a PIN (or it's a newer duress location). */
@@ -158,8 +203,13 @@ class AlertListenerService : Service() {
         when (status) {
             AlertStatus.CANCELLED -> {
                 MeshManager.drop("sos:$id") // stop spreading it
-                getSystemService(NotificationManager::class.java).cancel(id.hashCode())
-                // an open alert page sees the new status and stops ringing by itself
+                AlarmPlayer.stop(id)
+                val nm = getSystemService(NotificationManager::class.java)
+                nm.cancel(id.hashCode())
+                nm.cancel(duressNotificationId(id))
+                // A normal, quiet notification — not the alarm. (An open alert page
+                // switches to "ALERT CANCELLED" by itself.)
+                if (changed && AlertStatus.wasAlerted(id)) showSafeNotification(id)
             }
             AlertStatus.DURESS -> if (changed && AlertStatus.wasAlerted(id)) {
                 // Bring the alert back up with the duress warning.
@@ -176,27 +226,22 @@ class AlertListenerService : Service() {
     }
 
     @SuppressLint("MissingPermission")
-    private fun handleAlert(change: DocumentChange) {
-        val doc = change.document
-        if (!seen.add(doc.id)) return
-        if (doc.getString("senderId") == SosRepository.deviceId(this)) return
-        val created = doc.getTimestamp("createdAt")?.toDate()?.time ?: return
-        if (System.currentTimeMillis() - created > ALERT_MAX_AGE_MS) return
-        val lat = doc.getDouble("lat") ?: return
-        val lng = doc.getDouble("lng") ?: return
+    private fun handleAlert(id: String, lat: Double, lng: Double, createdAt: Long) {
+        if (!seen.add(id)) return
+        if (System.currentTimeMillis() - createdAt > ALERT_MAX_AGE_MS) return
 
         val known = lastLocation
         val fresh = known != null &&
             System.currentTimeMillis() - known.time < FRESH_LOCATION_MS
         if (fresh) {
-            checkDistance(known!!, lat, lng, doc.id)
+            checkDistance(known!!, lat, lng, id)
         } else {
             // Our position is old or unknown: get a precise fix before deciding.
             fused.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
                 .addOnSuccessListener { loc ->
                     val me = loc ?: known ?: return@addOnSuccessListener
                     lastLocation = me
-                    checkDistance(me, lat, lng, doc.id)
+                    checkDistance(me, lat, lng, id)
                 }
         }
     }
@@ -239,31 +284,58 @@ class AlertListenerService : Service() {
         }
     }
 
+    /**
+     * Every alert (Bluetooth mesh, server, push, duress update) looks and sounds the same:
+     * one notification on the "safeher_alerts" channel + the looping alarm, until she
+     * opens the alert or taps "Stop sound".
+     */
     private fun showSosNotification(lat: Double, lng: Double, distance: Float, id: String, hops: Int = -1) {
         AlertStatus.markAlerted(id)
         val duress = AlertStatus.statusOf(id) == AlertStatus.DURESS
+        val notifyId = if (duress) duressNotificationId(id) else id.hashCode()
+        val nm = getSystemService(NotificationManager::class.java)
+        if (duress) nm.cancel(id.hashCode()) // the duress warning replaces the plain alert
+
         val page = AlertActivity.intent(this, lat, lng, distance, id, hops)
         val fullScreen = PendingIntent.getActivity(
-            this, id.hashCode(), page,
+            this, notifyId, page,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val n = NotificationCompat.Builder(this, SOS_CHANNEL)
+        // Tapping the notification = she opened the alert → the sound stops.
+        val open = PendingIntent.getActivity(
+            this, notifyId + 1, AlertActivity.intent(this, lat, lng, distance, id, hops, openedByUser = true),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val stopSound = PendingIntent.getBroadcast(
+            this, notifyId + 2,
+            Intent(this, StopSoundReceiver::class.java).putExtra(StopSoundReceiver.EXTRA_ID, id),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val n = NotificationCompat.Builder(this, AlarmPlayer.CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sos)
-            .setContentTitle(if (duress) "DURESS: SOS nearby — do NOT call her phone" else "SOS nearby!")
+            .setContentTitle(if (duress) "DURESS: she was forced to cancel. Do NOT call her phone." else "SOS nearby!")
             .setContentText(
-                if (distance >= 0) "Someone ${distance.toInt()} m from you needs help. Tap to see where."
-                else "Someone near you needs help. Tap to see where.",
+                when {
+                    duress -> "Her alert is still active. Tap to see where she is."
+                    distance >= 0 -> "Someone ${distance.toInt()} m from you needs help. Tap to see where."
+                    else -> "Someone near you needs help. Tap to see where."
+                },
             )
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setColor(0xFFE84A8A.toInt())
-            .setVibrate(longArrayOf(0, 600, 300, 600, 300, 600))
-            .setContentIntent(fullScreen)
+            .setContentIntent(open)
             // Shows the alert page over the lock screen / when the screen is off.
             .setFullScreenIntent(fullScreen, true)
+            .addAction(0, "Stop sound", stopSound)
             .setAutoCancel(true)
             .build()
-        getSystemService(NotificationManager::class.java).notify(id.hashCode(), n)
+        nm.notify(notifyId, n)
+
+        // The channel plays the sound once as the notification appears; the alarm
+        // player then keeps the same sound looping until it's stopped.
+        AlarmPlayer.start(this, id, delayMs = AlarmPlayer.CLIP_MS, key = AlarmPlayer.ringKeyFor(id, duress))
 
         // While the phone is in use, Android shows full-screen intents as a small
         // banner. With "Display over other apps" we can open the full page directly.
@@ -273,6 +345,19 @@ class AlertListenerService : Service() {
             } catch (_: Exception) {
             }
         }
+    }
+
+    /** "She is safe, alert cancelled": a normal, quiet notification (no alarm). */
+    private fun showSafeNotification(id: String) {
+        val n = NotificationCompat.Builder(this, AlarmPlayer.QUIET_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_sos)
+            .setContentTitle("She is safe, alert cancelled")
+            .setContentText("She cancelled her SOS with her PIN. Thank you for being ready to help.")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
+            .setAutoCancel(true)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(("safe$id").hashCode(), n)
     }
 
     private fun ongoingNotification(): Notification {
@@ -294,7 +379,6 @@ class AlertListenerService : Service() {
         private const val RETRY_EVERY_MS = 30 * 1000L
         private const val REFRESH_EVERY_MS = 5 * 60 * 1000L
         private const val ONGOING_CHANNEL = "ongoing"
-        const val SOS_CHANNEL = "sos_alerts"
         const val RELAY_CHANNEL = "relay"
 
         fun start(context: Context) {
@@ -317,21 +401,21 @@ class AlertListenerService : Service() {
                     description = "When your phone passed someone's offline SOS to the internet"
                 },
             )
-            nm.createNotificationChannel(
-                NotificationChannel(SOS_CHANNEL, "SOS alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "Alerts from people within 500 m who pressed SOS"
-                    enableVibration(true)
-                    vibrationPattern = longArrayOf(0, 600, 300, 600, 300, 600)
-                    setBypassDnd(true)
-                    setSound(
-                        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ALARM)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build(),
-                    )
-                },
-            )
+            AlarmPlayer.createChannels(context) // "safeher_alerts" + quiet updates
+        }
+
+        fun duressNotificationId(id: String) = ("duress$id").hashCode()
+
+        const val ACTION_PUSH = "com.ekta.sos.PUSH"
+
+        /** Hand a server push (FCM data) to the running service. */
+        fun deliverPush(context: Context, data: Map<String, String>) {
+            val i = Intent(context, AlertListenerService::class.java).setAction(ACTION_PUSH)
+            data.forEach { (k, v) -> i.putExtra(k, v) }
+            try {
+                ContextCompat.startForegroundService(context, i)
+            } catch (_: Exception) {
+            }
         }
     }
 }

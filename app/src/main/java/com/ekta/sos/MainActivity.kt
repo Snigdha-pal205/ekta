@@ -201,7 +201,7 @@ class MainActivity : ComponentActivity() {
                 AlertCancelledScreen()
                 // Same screen and timing for the normal and the duress PIN, then home.
                 LaunchedEffect(Unit) {
-                    kotlinx.coroutines.delay(2_500)
+                    kotlinx.coroutines.delay(3_000)
                     showCancelled = false
                 }
             } else if (safeNowPad) {

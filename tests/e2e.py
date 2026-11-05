@@ -317,6 +317,55 @@ def patch_status(doc_id, status, key, p_lat, p_lng):
     http("PATCH", f"{DOCS}/{doc_id}?{mask}", body={"fields": fields})
 
 
+def ringing():
+    """Our alarm (safeher_alarm on the ALARM stream) is playing right now."""
+    return alarm_playing()
+
+
+def channel_ok():
+    out = adb("shell", "dumpsys", "notification")
+    i = out.find("mId='safeher_alerts'")
+    if i < 0:
+        return False
+    block = out[i:i + 3000]
+    return ("mImportance=4" in block and f"android.resource://{PKG}/" in block
+            and "usage=USAGE_ALARM" in block and "mVibrationPattern=[0, 900" in block)
+
+
+def quiet_safe_notification():
+    out = adb("shell", "dumpsys", "notification", "--noredact")
+    return "She is safe, alert cancelled" in out and "channel=safeher_updates" in out
+
+
+def send_push(data):
+    """A real FCM push from Google's servers to this phone (what a server would send)."""
+    out = adb("shell", "run-as", PKG, "cat", "shared_prefs/ekta.xml")
+    m = re.search(r'name="fcm_token">([^<]+)<', out)
+    if not m:
+        return False
+    body = {"message": {"token": m.group(1), "android": {"priority": "HIGH"}, "data": data}}
+    code, _ = http("POST", "https://fcm.googleapis.com/v1/projects/ekta-sos-3ll94/messages:send", token(), body)
+    return code == 200
+
+
+def tap_notification(text):
+    adb("shell", "cmd", "statusbar", "expand-notifications")
+    time.sleep(2)
+    ok = ui_tap(text, timeout=8)
+    adb("shell", "cmd", "statusbar", "collapse")
+    time.sleep(2)
+    return ok
+
+
+def clear_notifications():
+    """Swipe away old notifications ("Clear all") so a test taps the right one."""
+    adb("shell", "cmd", "statusbar", "expand-notifications")
+    time.sleep(2)
+    ui_tap("Clear all", timeout=4)
+    adb("shell", "cmd", "statusbar", "collapse")
+    time.sleep(1)
+
+
 def airplane(on):
     adb("shell", "cmd", "connectivity", "airplane-mode", "enable" if on else "disable")
     time.sleep(6)
@@ -508,6 +557,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("listener service running", service_running())
     check("mesh running (Bluetooth service type)", mesh_running())
     check("mesh really started (Nearby accepted, no missing permission)", nearby_ok())
+    check("sound: one 'safeher_alerts' channel (safeher_alarm, alarm usage, strong vibration)", channel_ok())
     set_location(lat, lng)
     time.sleep(8)  # let the service get its first fix
 
@@ -569,6 +619,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("duress PIN → no SOS page / 112 call visible",
           not screen_has("CANCEL ALERT", timeout=2) and not screen_has("Calling 112", timeout=1))
     check("duress PIN → no duress notification on her phone", not her_notifications_mention_sos())
+    check("duress PIN → her phone stays silent (no alarm sound)", not ringing())
     check("duress PIN → server status = duress (not cancelled)",
           wait_until(lambda: doc_field(duress_id, "status") == "duress", 30))
     check("duress PIN → DURESS SMS to contact", wait_sms("EKTA DURESS:", duress_sms) is not None)
@@ -749,6 +800,9 @@ def run_round(n, place, lat, lng, test_live_update=False):
     p_lat, p_lng = north(lat, lng, 120)
     inject(sos_with_keys(cid, p_lat, p_lng, "Meera", "kc-" + cid, "kd-" + cid))
     check("mesh SOS with keys → alert page", wait_alert_page(20) is not None)
+    check("sound: mesh alert rings (safeher_alarm, alarm stream)", wait_until(ringing, 10))
+    time.sleep(6)
+    check("sound: still ringing after 6 s (loops)", ringing())
     inject(status_msg(cid, "cancelled", "forged-key", "Meera", p_lat, p_lng))
     time.sleep(3)
     check("FORGED cancel → ignored, still alarming", screen_has("SOMEONE NEARBY NEEDS HELP") and alarm_playing())
@@ -771,6 +825,9 @@ def run_round(n, place, lat, lng, test_live_update=False):
     duress_gw = count("EKTA DURESS: Sara")
     inject(status_msg(did2, "duress", "kd-" + did2, "Sara", q_lat, q_lng))
     check("duress → alert page re-opens", wait_alert_page(20) is not None)
+    check("sound: duress update rings again", wait_until(ringing, 10))
+    check("sound: page 'STOP SOUND' stops it, page stays", ui_tap("STOP SOUND", timeout=6) and
+          wait_until(lambda: not ringing(), 6) and "AlertActivity" in top_activity())
     check("duress → 'DURESS' + 'Do NOT call her phone'",
           screen_has("DURESS") and screen_has("Do NOT call her phone"))
     check("duress → server status duress", wait_until(lambda: doc_field(did2, "status") == "duress", 30))
@@ -780,6 +837,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     safe_gw2 = count("EKTA: Sara is safe")
     inject(status_msg(did2, "cancelled", "kc-" + did2, "Sara", q_lat, q_lng))
     check("duress → then real cancel: page says ALERT CANCELLED", screen_has("ALERT CANCELLED", timeout=10))
+    check("sound: 'She is safe' is a quiet notification (no alarm)", quiet_safe_notification() and not ringing())
     check("duress → then real cancel: alarm stops", wait_until(lambda: not alarm_playing(), 8))
     check("duress → then real cancel: server status cancelled",
           wait_until(lambda: doc_field(did2, "status") == "cancelled", 30))
@@ -791,8 +849,13 @@ def run_round(n, place, lat, lng, test_live_update=False):
     # 12. Receiving phone: cancel / duress arriving from the server
     sid = f"pin-s-{n}-{int(time.time())}"
     s_lat, s_lng = north(lat, lng, 200)
+    clear_notifications()
     create_keyed(sid, s_lat, s_lng, "kc-" + sid, "kd-" + sid)
     check("server alert → alert page", wait_alert_page(25) is not None)
+    check("sound: server alert rings the same way", wait_until(ringing, 10))
+    adb("shell", "input", "keyevent", "KEYCODE_HOME")
+    check("sound: opening the alert from the notification stops it",
+          tap_notification(r"Someone \d+ m from you needs help.*") and wait_until(lambda: not ringing(), 8))
     patch_status(sid, "duress", "kd-" + sid, s_lat, s_lng)
     check("server duress → page shows DURESS", screen_has("Do NOT call her phone", timeout=15))
     patch_status(sid, "cancelled", "kd-" + sid, s_lat, s_lng)  # duress key can't cancel
@@ -810,7 +873,28 @@ def run_round(n, place, lat, lng, test_live_update=False):
     ui_tap("OK")
     wait_until(lambda: "AlertActivity" not in top_activity(), 10)
 
-    # 13. Restart the phone; app is NOT opened afterwards
+    # 13. Push from the server (real FCM message) → same alert + same sound
+    pid = f"push-{n}-{int(time.time())}"
+    u_lat, u_lng = east(lat, lng, 250)
+    adb("shell", "input", "keyevent", "KEYCODE_HOME")
+    sent = send_push({"type": "sos", "id": pid, "senderId": "push-phone", "lat": str(u_lat), "lng": str(u_lng),
+                      "createdAt": str(int(time.time() * 1000)), "status": "active",
+                      "hashC": sha("kc-" + pid), "hashD": sha("kd-" + pid)})
+    check("push: real FCM message accepted by Google", sent)
+    page = wait_alert_page(30)
+    check("push → full-screen alert page", page is not None, page or "no alert")
+    check("push → same sound (safeher_alarm, alarm stream)", wait_until(ringing, 10))
+    send_push({"type": "status", "id": pid, "senderId": "push-phone", "lat": str(u_lat), "lng": str(u_lng),
+               "status": "duress", "statusAt": str(int(time.time() * 1000))})
+    check("push duress → DURESS page + rings", screen_has("Do NOT call her phone", timeout=15) and wait_until(ringing, 10))
+    send_push({"type": "status", "id": pid, "senderId": "push-phone", "lat": str(u_lat), "lng": str(u_lng),
+               "status": "cancelled", "statusAt": str(int(time.time() * 1000) + 1)})
+    check("push cancel → ALERT CANCELLED, sound stops, quiet notification",
+          screen_has("ALERT CANCELLED", timeout=15) and wait_until(lambda: not ringing(), 8) and quiet_safe_notification())
+    ui_tap("OK")
+    wait_until(lambda: "AlertActivity" not in top_activity(), 10)
+
+    # 14. Restart the phone; app is NOT opened afterwards
     power_cycle()
     set_location(lat, lng)
     time.sleep(10)

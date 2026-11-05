@@ -3,17 +3,9 @@ package com.ekta.sos
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.MediaPlayer
-import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -61,8 +53,6 @@ import java.util.Date
 class AlertActivity : ComponentActivity() {
 
     private var alert by mutableStateOf<Alert?>(null)
-    private var player: MediaPlayer? = null
-    private val handler = Handler(Looper.getMainLooper())
 
     data class Alert(
         val lat: Double, val lng: Double, val distance: Int, val id: String, val at: Long,
@@ -76,16 +66,17 @@ class AlertActivity : ComponentActivity() {
         handle(intent)
         setContent {
             val infos by AlertStatus.infos.collectAsState()
+            val ringing by AlarmPlayer.ringingFor.collectAsState()
             alert?.let { a ->
                 val info = infos[a.id]
                 val status = info?.status ?: AlertStatus.ACTIVE
-                // She cancelled with her real PIN: stop ringing.
-                LaunchedEffect(status) { if (status == AlertStatus.CANCELLED) stopAlarm() }
                 AlertScreen(
                     alert = a.copy(lat = info?.lat ?: a.lat, lng = info?.lng ?: a.lng),
                     status = status,
+                    ringing = ringing == a.id,
+                    onStopSound = { AlarmPlayer.stop(a.id) },
                     onOpenMap = {
-                        stopAlarm()
+                        done(a.id)
                         try {
                             startActivity(
                                 Intent(Intent.ACTION_VIEW, Uri.parse("geo:${a.lat},${a.lng}?q=${a.lat},${a.lng}(SOS)")),
@@ -97,7 +88,7 @@ class AlertActivity : ComponentActivity() {
                         }
                         finish()
                     },
-                    onDismiss = { stopAlarm(); finish() },
+                    onDismiss = { done(a.id); finish() },
                 )
             }
         }
@@ -105,12 +96,16 @@ class AlertActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handle(intent) // a newer alert replaces the one on screen
+        setIntent(intent)
+        handle(intent) // a newer alert / duress update replaces the one on screen
     }
 
-    override fun onDestroy() {
-        stopAlarm()
-        super.onDestroy()
+    /** She's been seen: stop the sound and clear the alert notifications. */
+    private fun done(id: String) {
+        AlarmPlayer.stop(id)
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.cancel(id.hashCode())
+        nm.cancel(AlertListenerService.duressNotificationId(id))
     }
 
     private fun handle(intent: Intent) {
@@ -123,9 +118,9 @@ class AlertActivity : ComponentActivity() {
             at = System.currentTimeMillis(),
             hops = intent.getIntExtra(EXTRA_HOPS, -1),
         )
-        // The page itself rings now, so drop the notification (and its one-off sound).
-        getSystemService(NotificationManager::class.java).cancel(id.hashCode())
-        startAlarm()
+        // Opened by the receiver (tapped the notification) → that's "opening the alert":
+        // stop the sound. Shown automatically (full screen) → keep ringing until a button.
+        if (intent.getBooleanExtra(EXTRA_OPENED, false)) AlarmPlayer.stop(id)
     }
 
     private fun showOverLockScreen() {
@@ -142,51 +137,18 @@ class AlertActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
-    private fun vibrator(): Vibrator =
-        if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java).defaultVibrator
-        else @Suppress("DEPRECATION") getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-
-    private fun startAlarm() {
-        stopAlarm()
-        // Buzz: long pulses, repeating
-        vibrator().vibrate(VibrationEffect.createWaveform(longArrayOf(0, 800, 400), 0))
-        // Ring: alarm sound on the alarm stream, so it plays even in silent mode
-        try {
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-            player = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build(),
-                )
-                setDataSource(this@AlertActivity, uri)
-                isLooping = true
-                prepare()
-                start()
-            }
-        } catch (_: Exception) {
-        }
-        handler.postDelayed({ stopAlarm() }, AUTO_STOP_MS)
-    }
-
-    private fun stopAlarm() {
-        handler.removeCallbacksAndMessages(null)
-        vibrator().cancel()
-        player?.run { try { stop() } catch (_: Exception) {}; release() }
-        player = null
-    }
-
     companion object {
         private const val EXTRA_LAT = "lat"
         private const val EXTRA_LNG = "lng"
         private const val EXTRA_DISTANCE = "distance"
         private const val EXTRA_ID = "id"
         private const val EXTRA_HOPS = "hops"
-        private const val AUTO_STOP_MS = 2 * 60 * 1000L
+        private const val EXTRA_OPENED = "opened"
 
-        fun intent(context: Context, lat: Double, lng: Double, distance: Float, id: String, hops: Int = -1) =
+        fun intent(
+            context: Context, lat: Double, lng: Double, distance: Float, id: String, hops: Int = -1,
+            openedByUser: Boolean = false,
+        ) =
             Intent(context, AlertActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(EXTRA_LAT, lat)
@@ -194,13 +156,21 @@ class AlertActivity : ComponentActivity() {
                 .putExtra(EXTRA_DISTANCE, distance)
                 .putExtra(EXTRA_ID, id)
                 .putExtra(EXTRA_HOPS, hops)
+                .putExtra(EXTRA_OPENED, openedByUser)
     }
 }
 
 private val AlertPink = Color(0xFFF06A9E)
 
 @Composable
-private fun AlertScreen(alert: AlertActivity.Alert, status: String, onOpenMap: () -> Unit, onDismiss: () -> Unit) {
+private fun AlertScreen(
+    alert: AlertActivity.Alert,
+    status: String,
+    ringing: Boolean,
+    onStopSound: () -> Unit,
+    onOpenMap: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     if (status == AlertStatus.CANCELLED) return CancelledByHer(onDismiss)
     val pulse = rememberInfiniteTransition(label = "pulse")
     val t by pulse.animateFloat(
@@ -302,7 +272,13 @@ private fun AlertScreen(alert: AlertActivity.Alert, status: String, onOpenMap: (
                 )
             }
 
-            Spacer(Modifier.height(34.dp))
+            Spacer(Modifier.height(26.dp))
+            if (ringing) {
+                ChunkyButton(width = 280.dp, height = 54.dp, color = Ink, onClick = onStopSound) {
+                    Text("STOP SOUND", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Lime, letterSpacing = 2.sp)
+                }
+                Spacer(Modifier.height(16.dp))
+            }
             ChunkyButton(width = 280.dp, height = 74.dp, onClick = onOpenMap) {
                 Text("SHOW ME WHERE", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 19.sp, color = Ink, letterSpacing = 1.sp)
                 Text("opens the map", fontFamily = Mono, fontSize = 11.sp, color = Ink)
