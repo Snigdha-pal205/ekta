@@ -33,11 +33,13 @@ import androidx.compose.ui.window.Dialog
 @Composable
 fun ContactDialog(
     initial: EmergencyContact?,
+    initialMyName: String,
     picked: EmergencyContact?,
     onPickFromContacts: () -> Unit,
-    onSave: (name: String, number: String) -> Unit,
+    onSave: (myName: String, name: String, number: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var myName by remember { mutableStateOf(initialMyName) }
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var number by remember { mutableStateOf(initial?.number ?: "") }
     LaunchedEffect(picked) {
@@ -59,6 +61,7 @@ fun ContactDialog(
                 "When you press SOS, this person gets an SMS with your live location.",
                 fontFamily = Mono, fontSize = 12.sp, color = Ink,
             )
+            Field("Your name (so they know it's you)", myName) { myName = it }
             Text(
                 "PICK FROM CONTACTS",
                 fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
@@ -83,7 +86,7 @@ fun ContactDialog(
                     modifier = Modifier
                         .background(if (valid) Lime else Color.Transparent)
                         .border(2.dp, if (valid) Ink else Ink.copy(alpha = 0.35f))
-                        .clickable(enabled = valid) { onSave(name.trim(), number.trim()) }
+                        .clickable(enabled = valid) { onSave(myName.trim(), name.trim(), number.trim()) }
                         .padding(horizontal = 18.dp, vertical = 10.dp),
                 )
             }

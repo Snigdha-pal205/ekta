@@ -26,6 +26,7 @@ data class SetupStatus(
     val alwaysOn: Boolean,
     val fullScreen: Boolean,
     val sms: Boolean,
+    val mesh: Boolean,
     val contact: EmergencyContact?,
 )
 
@@ -49,7 +50,7 @@ fun SetupScreen(status: SetupStatus, message: String?, onTurnOn: () -> Unit) {
             WobblyLogo("EKTA")
             Spacer(Modifier.height(10.dp))
             Text(
-                "One-time setup. Takes 30 seconds.",
+                "One-time setup. Takes under a minute.",
                 fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Ink,
             )
             Spacer(Modifier.height(24.dp))
@@ -60,6 +61,7 @@ fun SetupScreen(status: SetupStatus, message: String?, onTurnOn: () -> Unit) {
                 StatusRow(s(status.alwaysOn), "ALWAYS ON", "keeps working in the background and after a restart")
                 StatusRow(s(status.fullScreen), "FULL-SCREEN ALERTS", "a nearby SOS fills your screen and buzzes")
                 StatusRow(s(status.sms), "SMS", "to text your live location on SOS")
+                StatusRow(s(status.mesh), "BLUETOOTH MESH", "SOS works with no network: phones pass it on")
                 StatusRow(
                     s(status.contact != null), "EMERGENCY CONTACT",
                     status.contact?.let { "${it.name} · ${it.number}" } ?: "who gets your live location",

@@ -3,6 +3,8 @@ package com.ekta.sos
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationManager
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -25,6 +27,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 
+/** 2 = added Bluetooth mesh (offline SOS). */
+private const val SETUP_VERSION = 2
+
 class MainActivity : ComponentActivity() {
 
     /** Bumped on every resume so the UI re-reads permission state (e.g. after Settings). */
@@ -42,7 +47,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val sos by SosSession.state.collectAsState()
-            var setupDone by remember { mutableStateOf(prefs.getBoolean("setup_done", false)) }
+            // Bump SETUP_VERSION whenever setup gains a step, so existing users see it once.
+            var setupDone by remember {
+                mutableStateOf(prefs.getBoolean("setup_done", false) && prefs.getInt("setup_version", 1) >= SETUP_VERSION)
+            }
             var setupMessage by remember { mutableStateOf<String?>(null) }
             var contact by remember { mutableStateOf(SosSession.contact(this)) }
             var showContactDialog by remember { mutableStateOf(false) }
@@ -50,7 +58,7 @@ class MainActivity : ComponentActivity() {
             val tick = resumeTick // read so the checks below refresh on resume
 
             fun finishSetup() {
-                prefs.edit().putBoolean("setup_done", true).apply()
+                prefs.edit().putBoolean("setup_done", true).putInt("setup_version", SETUP_VERSION).apply()
                 setupMessage = null
                 setupDone = true
                 if (contact == null) showContactDialog = true
@@ -62,18 +70,33 @@ class MainActivity : ComponentActivity() {
             ) { result -> result.data?.data?.let { picked = readPickedContact(it) } }
 
             // ---- Setup chain: each step hands over to the next ----
-            val overlayLauncher = rememberLauncherForActivityResult(
+            val bluetoothLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult(),
             ) { finishSetup() }
 
+            fun askBluetooth() {
+                if (bluetoothOn() || !MeshManager.hasPermissions(this)) return finishSetup()
+                try {
+                    @SuppressLint("MissingPermission")
+                    val i = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                    bluetoothLauncher.launch(i)
+                } catch (_: Exception) {
+                    finishSetup()
+                }
+            }
+
+            val overlayLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult(),
+            ) { askBluetooth() }
+
             fun askOverlay() {
-                if (Settings.canDrawOverlays(this)) return finishSetup()
+                if (Settings.canDrawOverlays(this)) return askBluetooth()
                 try {
                     overlayLauncher.launch(
                         Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
                     )
                 } catch (_: Exception) {
-                    finishSetup()
+                    askBluetooth()
                 }
             }
 
@@ -135,7 +158,7 @@ class MainActivity : ComponentActivity() {
 
             fun startSetup() {
                 when {
-                    hasLocation() && (hasSms() || setupMessage != null) -> askBackground()
+                    hasLocation() && (allForegroundGranted() || setupMessage != null) -> askBackground()
                     hasLocation() -> foregroundLauncher.launch(foregroundPermissions())
                     setupMessage != null &&
                         !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) ->
@@ -159,6 +182,7 @@ class MainActivity : ComponentActivity() {
                         alwaysOn = BootReceiver.canListenInBackground(this) && ignoresBatteryOptimizations(),
                         fullScreen = canUseFullScreen() && Settings.canDrawOverlays(this),
                         sms = hasSms(),
+                        mesh = MeshManager.hasPermissions(this) && bluetoothOn(),
                         contact = contact,
                     ),
                     message = setupMessage,
@@ -178,6 +202,7 @@ class MainActivity : ComponentActivity() {
             if (showContactDialog) {
                 ContactDialog(
                     initial = contact,
+                    initialMyName = SosSession.myName(this),
                     picked = picked,
                     onPickFromContacts = {
                         try {
@@ -187,8 +212,8 @@ class MainActivity : ComponentActivity() {
                         } catch (_: Exception) {
                         }
                     },
-                    onSave = { name, number ->
-                        SosSession.saveContact(this, name, number)
+                    onSave = { myName, name, number ->
+                        SosSession.saveContact(this, myName, name, number)
                         contact = SosSession.contact(this)
                         showContactDialog = false
                     },
@@ -237,6 +262,23 @@ class MainActivity : ComponentActivity() {
         add(Manifest.permission.ACCESS_FINE_LOCATION)
         add(Manifest.permission.ACCESS_COARSE_LOCATION)
         add(Manifest.permission.SEND_SMS)
-        if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT >= 31) {
+            // "Nearby devices": Bluetooth mesh for SOS with no network
+            add(Manifest.permission.BLUETOOTH_SCAN)
+            add(Manifest.permission.BLUETOOTH_ADVERTISE)
+            add(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            add(Manifest.permission.POST_NOTIFICATIONS)
+            add(Manifest.permission.NEARBY_WIFI_DEVICES)
+        }
     }.toTypedArray()
+
+    private fun allForegroundGranted() = foregroundPermissions().all(::granted)
+
+    private fun bluetoothOn() = try {
+        getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled == true
+    } catch (_: Exception) {
+        false
+    }
 }

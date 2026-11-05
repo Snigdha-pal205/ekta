@@ -61,7 +61,10 @@ class AlertActivity : ComponentActivity() {
     private var player: MediaPlayer? = null
     private val handler = Handler(Looper.getMainLooper())
 
-    data class Alert(val lat: Double, val lng: Double, val distance: Int, val id: String, val at: Long)
+    data class Alert(
+        val lat: Double, val lng: Double, val distance: Int, val id: String, val at: Long,
+        val hops: Int, // -1 = came over the internet, else Bluetooth / Wi-Fi hops
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -109,6 +112,7 @@ class AlertActivity : ComponentActivity() {
             distance = intent.getFloatExtra(EXTRA_DISTANCE, 0f).toInt(),
             id = id,
             at = System.currentTimeMillis(),
+            hops = intent.getIntExtra(EXTRA_HOPS, -1),
         )
         // The page itself rings now, so drop the notification (and its one-off sound).
         getSystemService(NotificationManager::class.java).cancel(id.hashCode())
@@ -170,15 +174,17 @@ class AlertActivity : ComponentActivity() {
         private const val EXTRA_LNG = "lng"
         private const val EXTRA_DISTANCE = "distance"
         private const val EXTRA_ID = "id"
+        private const val EXTRA_HOPS = "hops"
         private const val AUTO_STOP_MS = 2 * 60 * 1000L
 
-        fun intent(context: Context, lat: Double, lng: Double, distance: Float, id: String) =
+        fun intent(context: Context, lat: Double, lng: Double, distance: Float, id: String, hops: Int = -1) =
             Intent(context, AlertActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(EXTRA_LAT, lat)
                 .putExtra(EXTRA_LNG, lng)
                 .putExtra(EXTRA_DISTANCE, distance)
                 .putExtra(EXTRA_ID, id)
+                .putExtra(EXTRA_HOPS, hops)
     }
 }
 
@@ -244,7 +250,7 @@ private fun AlertScreen(alert: AlertActivity.Alert, onOpenMap: () -> Unit, onDis
                     .padding(horizontal = 18.dp, vertical = 10.dp),
             ) {
                 Text(
-                    "${alert.distance} m away",
+                    if (alert.distance >= 0) "${alert.distance} m away" else "very close",
                     fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Lime,
                 )
             }
@@ -253,6 +259,13 @@ private fun AlertScreen(alert: AlertActivity.Alert, onOpenMap: () -> Unit, onDis
                 "Alert received at ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(alert.at))}",
                 fontFamily = Mono, fontSize = 13.sp, color = Ink,
             )
+            if (alert.hops >= 0) {
+                Text(
+                    if (alert.hops == 0) "via Bluetooth/Wi-Fi straight from her phone · no network needed"
+                    else "via Bluetooth/Wi-Fi through ${alert.hops} phone(s) · no network needed",
+                    fontFamily = Mono, fontSize = 11.sp, color = Ink, textAlign = TextAlign.Center,
+                )
+            }
 
             Spacer(Modifier.height(34.dp))
             ChunkyButton(width = 280.dp, height = 74.dp, onClick = onOpenMap) {

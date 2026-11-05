@@ -102,6 +102,37 @@ def east(lat, lng, meters):
 
 # ---------- Device ----------
 
+EMULATOR = os.path.expanduser("~/Library/Android/sdk/emulator/emulator")
+
+
+def start_emulator():
+    subprocess.Popen(
+        [EMULATOR, "-avd", "ekta_test", "-no-snapshot-load", "-no-snapshot-save", "-no-audio",
+         "-gpu", "swiftshader_indirect", "-dns-server", "8.8.8.8,1.1.1.1"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+
+def power_cycle():
+    """Switch the phone off and on (cold boot). Soft 'adb reboot' crashes this emulator."""
+    adb("shell", "sync")
+    sh(ADB, "-s", "emulator-5554", "emu", "kill")
+    for _ in range(30):
+        if "emulator-5554" not in sh(ADB, "devices"):
+            break
+        time.sleep(2)
+    subprocess.run(["pkill", "-9", "-f", "qemu-system"])
+    time.sleep(3)
+    for f in os.listdir(os.path.expanduser("~/.android/avd/ekta_test.avd")):
+        if f.endswith(".lock"):
+            os.remove(os.path.expanduser(f"~/.android/avd/ekta_test.avd/{f}"))
+    start_emulator()
+    wait_boot()
+    time.sleep(25)
+    for k in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"):
+        adb("shell", "settings", "put", "global", k, "0")
+
+
 def wait_boot():
     adb("wait-for-device")
     for _ in range(120):
@@ -132,14 +163,27 @@ def wait_new_alert(before, timeout=20):
     return set()
 
 
+def wait_ui_ready(timeout=180):
+    """After a restart: wait until the home screen is up and the screen can be read."""
+    end = time.time() + timeout
+    while time.time() < end:
+        wake_and_unlock()
+        adb("shell", "input", "keyevent", "KEYCODE_HOME")
+        if "launcher" in top_activity().lower() and "<hierarchy" in ui_xml():
+            return True
+        time.sleep(5)
+    log("  WARNING: emulator UI not ready after restart")
+    return False
+
+
 def open_app():
-    """am start, retried: right after a restart the first launch can get swallowed."""
-    for _ in range(5):
+    """am start, retried: right after a restart/install a cold start can take 10 s+."""
+    for _ in range(8):
         adb("shell", "am", "start", "-W", "-n", f"{PKG}/.MainActivity")
-        time.sleep(2)
-        if f"{PKG}/.MainActivity" in top_activity():
+        if wait_until(lambda: f"{PKG}/.MainActivity" in top_activity(), 15):
             return True
         wake_and_unlock()
+    log("  WARNING: couldn't bring the app to the front")
     return False
 
 
@@ -202,6 +246,62 @@ def wake_and_unlock():
     time.sleep(1)
 
 
+def airplane(on):
+    adb("shell", "cmd", "connectivity", "airplane-mode", "enable" if on else "disable")
+    time.sleep(6)
+
+
+def inject(messages):
+    """Simulate messages arriving over Bluetooth from a nearby phone (debug builds only)."""
+    adb("shell", "am", "broadcast", "-n", f"{PKG}/.DebugMeshReceiver", "--es", "json",
+        "'" + json.dumps(messages).replace("'", "") + "'")
+    time.sleep(2)
+
+
+def last_alert_id():
+    out = adb("shell", "run-as", PKG, "cat", "shared_prefs/ekta.xml")
+    m = re.search(r'name="last_alert_id">([^<]+)<', out)
+    return m.group(1) if m else ""
+
+
+def doc_field(doc_id, field):
+    code, text = http("GET", f"{DOCS}/{doc_id}", token())
+    if code != 200:
+        return None
+    v = json.loads(text).get("fields", {}).get(field)
+    return list(v.values())[0] if v else None
+
+
+def precreate(doc_id, p_lat, p_lng):
+    """Another gateway already uploaded this alert."""
+    body = {"fields": {
+        "lat": {"doubleValue": p_lat}, "lng": {"doubleValue": p_lng},
+        "cell": {"stringValue": f"{math.floor(p_lat / 0.01)}_{math.floor(p_lng / 0.01)}"},
+        "senderId": {"stringValue": "neha-phone"},
+        "createdAt": {"timestampValue": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")},
+        "via": {"stringValue": "mesh"}, "gateway": {"stringValue": "other-phone"},
+    }}
+    http("POST", f"{DOCS}?documentId={doc_id}", body=body)
+
+
+def wait_until(cond, timeout):
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            if cond():
+                return True
+        except Exception:
+            pass
+        time.sleep(3)
+    return False
+
+
+def mesh_running():
+    out = adb("shell", "dumpsys", "activity", "services", PKG)
+    m = re.search(r"types=0x([0-9a-f]+)", out)
+    return bool(m) and int(m.group(1), 16) & 0x10 != 0
+
+
 def top_activity():
     out = adb("shell", "dumpsys", "activity", "activities")
     m = re.search(r"topResumedActivity=.*?\{[^}]*? ([\w.]+/[\w.]+)", out)
@@ -247,6 +347,9 @@ def in_phone_call():
 
 def run_round(n, place, lat, lng, test_live_update=False):
     log(f"\n=== Round {n}: {place} ({lat}, {lng}) ===")
+    dns = adb("shell", "ping", "-c", "1", "-W", "5", "firestore.googleapis.com")
+    if "1 received" not in dns and "bytes from" not in dns:
+        log("  WARNING: emulator can't reach firestore.googleapis.com (DNS/network) — results below will be wrong")
     clear_alerts()
     for _ in range(3):  # after a restart the lock screen can take a moment to go away
         wake_and_unlock()
@@ -255,6 +358,8 @@ def run_round(n, place, lat, lng, test_live_update=False):
         time.sleep(3)
 
     # 1. Fresh install + setup through the real permission popups
+    wait_ui_ready()
+    adb("shell", "am", "force-stop", PKG)
     adb("uninstall", PKG)
     check("install APK", "Success" in adb("install", APK))
     # Special-access pages (full-screen + draw-over-apps) are toggles inside Settings;
@@ -264,24 +369,39 @@ def run_round(n, place, lat, lng, test_live_update=False):
     set_location(lat, lng)
     open_app()
     check("setup screen shown on first launch", screen_has("TURN ON SOS ALERTS", timeout=30))
-    ui_tap("TURN ON SOS ALERTS")
-    ui_tap("While using the app")        # location
-    ui_tap("Allow")                      # SMS
-    ui_tap("Allow")                      # notifications
-    ui_tap("Allow all the time")         # background location settings page
-    adb("shell", "input", "keyevent", "KEYCODE_BACK")
-    time.sleep(2)
-    ui_tap("Allow")                      # battery optimisation
-    time.sleep(3)
+    # Walk the real popups. If the chain stops early (slow emulator), tap the button
+    # again, just like a user would; already-granted steps are skipped automatically.
+    for attempt in range(3):
+        ui_tap("TURN ON SOS ALERTS", timeout=8)
+        ui_tap("While using the app", timeout=6)  # location
+        for _ in range(4):                          # nearby devices, notifications, SMS
+            if not ui_tap("Allow", timeout=5):
+                break
+        if ui_tap("Allow all the time", timeout=6):  # background location settings page
+            adb("shell", "input", "keyevent", "KEYCODE_BACK")
+            time.sleep(2)
+        for _ in range(3):                          # battery optimisation, Bluetooth on
+            if not ui_tap("Allow", timeout=6):
+                break
+        time.sleep(2)
+        if screen_has("EMERGENCY CONTACT", timeout=5):
+            break
+        log(f"  (setup didn't finish on try {attempt + 1}; tapping the button again)")
+        open_app()
     check("location granted", granted("android.permission.ACCESS_FINE_LOCATION"))
     check("SMS granted", granted("android.permission.SEND_SMS"))
     check("notifications granted", granted("android.permission.POST_NOTIFICATIONS"))
     check("background location granted", granted("android.permission.ACCESS_BACKGROUND_LOCATION"))
     check("battery saver exemption", PKG in adb("shell", "dumpsys", "deviceidle", "whitelist"))
+    check("nearby devices (Bluetooth) granted", granted("android.permission.BLUETOOTH_CONNECT")
+          and granted("android.permission.BLUETOOTH_ADVERTISE") and granted("android.permission.BLUETOOTH_SCAN"))
 
     # Emergency contact dialog appears at the end of setup. The emulator's own number
     # (5554) is used; sent messages are checked in the phone's SMS "sent" folder.
     check("emergency contact dialog shown", screen_has("EMERGENCY CONTACT"))
+    ui_tap("Your name.*")
+    adb("shell", "input", "text", "Riya")
+    time.sleep(1)
     ui_tap("Name")
     for word in ["Test", "%s", "Contact"]:  # type in small chunks so no keys get dropped
         adb("shell", "input", "text", word)
@@ -293,12 +413,13 @@ def run_round(n, place, lat, lng, test_live_update=False):
     time.sleep(2)
     check("SOS screen after setup", screen_has("press for help") and screen_has("Test Contact"))
     check("listener service running", service_running())
+    check("mesh running (Bluetooth service type)", mesh_running())
     set_location(lat, lng)
     time.sleep(8)  # let the service get its first fix
 
     # 2. Press SOS in the app
     before_docs = len(list_alerts(token()))
-    sos_before = len([b for b in sms_inbox() if "SOS! I need help" in b])
+    sos_before = len([b for b in sms_inbox() if "SOS from" in b])
     ui_tap("SOS")
     time.sleep(8)
     docs = list_alerts(token())
@@ -312,7 +433,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("112 call shown as DEMO", screen_has("Calling 112") and screen_has("DEMO · NO REAL CALL"))
     check("no real phone call placed", not in_phone_call())
     check("women's committee shown as DEMO", screen_has("DEMO · not actually sent"))
-    sms = wait_sms("SOS! I need help", sos_before)
+    sms = wait_sms("SOS from", sos_before)
     check("REAL SMS with live location sent to contact", sms is not None, (sms or "none")[:70])
     if sms:
         m = re.search(r"q=(-?[\d.]+),(-?[\d.]+)", sms)
@@ -358,12 +479,110 @@ def run_round(n, place, lat, lng, test_live_update=False):
     expect("screen locked: 300 m → full-screen alert", *east(lat, lng, -300), True)
     wake_and_unlock()
 
-    # 5. Restart the phone; app is NOT opened afterwards
-    adb("shell", "sync")
-    adb("reboot")
+    # 5. No network at all (airplane mode): her side
+    def count(prefix):
+        return len([b for b in sms_inbox() if b.startswith(prefix)])
+
+    sos_sms = count("SOS from")
+    airplane(True)
+    open_app()
+    ui_tap("SOS")
+    time.sleep(6)
+    check("offline: 112 waits for signal", screen_has("Waiting for signal"))
+    check("offline: SMS queued until signal", screen_has("no signal · will send automatically"))
+    check("offline: internet shown offline", screen_has("INTERNET · OFFLINE"))
+    check("offline: nothing sent yet", count("SOS from") == sos_sms)
+    alert_id = last_alert_id()
+    airplane(False)
+    ok = wait_until(lambda: count("SOS from") > sos_sms, 70)
+    check("signal back: queued SMS sent automatically", ok)
+    check("signal back: alert uploaded automatically", wait_until(lambda: doc_field(alert_id, "via") == "direct", 40))
+    check("signal back: 112 now calling (demo)", screen_has("Calling 112"))
+    ui_tap("I'M SAFE")
+    time.sleep(2)
+
+    # 6. Offline, and a nearby gateway confirms it texted her contact → no duplicate
+    sos_sms = count("SOS from")
+    airplane(True)
+    ui_tap("SOS")
+    time.sleep(6)
+    alert_id = last_alert_id()
+    inject([{"t": "ack", "id": alert_id, "h": 1, "g": "gateway-phone", "sms": "sent"}])
+    check("ACK: shows SMS sent by nearby phone", screen_has("sent by a nearby Ekta phone"))
+    check("ACK: shows online through gateway", screen_has("online through a nearby Ekta phone"))
+    airplane(False)
+    time.sleep(45)
+    check("ACK: her phone does NOT text the contact again", count("SOS from") == sos_sms)
+    ui_tap("I'M SAFE")
+    time.sleep(2)
+    adb("shell", "input", "keyevent", "KEYCODE_HOME")
+
+    # 7. This phone as the gateway for someone else's offline SOS
+    def mesh_sos(mid, m_lat, m_lng, name, hops=0):
+        now = int(time.time() * 1000)
+        return [{"t": "sos", "id": mid, "h": hops, "s": f"{name.lower()}-phone", "la": m_lat, "lo": m_lng,
+                 "ac": 8, "ts": now, "n": name, "cn": "Mom", "cp": "5554"}]
+
+    def dismiss_page():
+        if not ui_tap("DISMISS", timeout=6):
+            adb("shell", "input", "keyevent", "KEYCODE_BACK")
+        wait_until(lambda: "AlertActivity" not in top_activity(), 10)
+
+    gid = f"mesh-gw-{n}-{int(time.time())}"
+    gw_sms = count("EKTA SOS: Priya")
+    inject(mesh_sos(gid, *north(lat, lng, 110), "Priya"))
+    page = wait_alert_page(20)
+    check("mesh SOS 110 m → full-screen alert", page is not None, page or "no alert")
+    check("alert says it came over Bluetooth/Wi-Fi", screen_has("via Bluetooth/Wi-Fi"))
+    if page:
+        dismiss_page()
+    check("gateway: uploads it (via mesh, me as gateway)",
+          wait_until(lambda: doc_field(gid, "gateway") == device_id() and doc_field(gid, "via") == "mesh", 30))
+    check("gateway: texts her contact from this SIM", wait_until(lambda: count("EKTA SOS: Priya") == gw_sms + 1, 40))
+    check("gateway: tells this phone's owner", "Your phone relayed an SOS" in adb("shell", "dumpsys", "notification", "--noredact"))
+    inject(mesh_sos(gid, *north(lat, lng, 110), "Priya", hops=2))  # same SOS via another route
+    time.sleep(12)
+    check("gateway: same SOS again → no second SMS", count("EKTA SOS: Priya") == gw_sms + 1)
+
+    # 8. Relay phone is offline too → buzzes now, uploads + texts once it gets internet
+    lid = f"mesh-late-{n}-{int(time.time())}"
+    late_sms = count("EKTA SOS: Asha")
+    airplane(True)
+    inject(mesh_sos(lid, *east(lat, lng, 200), "Asha", hops=2))
+    page = wait_alert_page(20)
+    check("offline relay: still shows full-screen alert", page is not None, page or "no alert")
+    if page:
+        dismiss_page()
+    time.sleep(5)
+    check("offline relay: nothing uploaded/sent while offline",
+          doc_field(lid, "via") is None and count("EKTA SOS: Asha") == late_sms)
+    airplane(False)
+    check("offline relay: uploads when internet returns", wait_until(lambda: doc_field(lid, "via") == "mesh", 70))
+    check("offline relay: then texts her contact", wait_until(lambda: count("EKTA SOS: Asha") == late_sms + 1, 60))
+
+    # 9. Another gateway already put it online → this phone must not text again
+    did = f"mesh-dup-{n}-{int(time.time())}"
+    precreate(did, *north(lat, lng, 150))
+    dup_sms = count("EKTA SOS: Neha")
+    inject(mesh_sos(did, *north(lat, lng, 150), "Neha", hops=1))
+    page = wait_alert_page(15)
+    if page:
+        dismiss_page()
     time.sleep(10)
-    wait_boot()
-    time.sleep(20)
+    check("already online elsewhere → no SMS from this phone", count("EKTA SOS: Neha") == dup_sms)
+    check("already online elsewhere → gateway unchanged", doc_field(did, "gateway") == "other-phone")
+
+    # 10. Mesh SOS from 2 km away → no full-screen alert here, but still relayed online
+    fid = f"mesh-far-{n}-{int(time.time())}"
+    inject(mesh_sos(fid, *north(lat, lng, -2000), "Far", hops=3))
+    page = wait_alert_page(12)
+    check("mesh SOS 2 km away → no full-screen alert", page is None, page or "no alert")
+    if page:
+        dismiss_page()
+    check("mesh SOS 2 km away → still uploaded for phones near her", wait_until(lambda: doc_field(fid, "via") == "mesh", 30))
+
+    # 11. Restart the phone; app is NOT opened afterwards
+    power_cycle()
     set_location(lat, lng)
     time.sleep(10)
     check("after restart: service running without opening app", service_running())

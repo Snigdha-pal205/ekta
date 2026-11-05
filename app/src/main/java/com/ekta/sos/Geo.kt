@@ -8,6 +8,9 @@ const val ALERT_RADIUS_METERS = 500f
 /** Alerts older than this are ignored (e.g. when a phone comes back online late). */
 const val ALERT_MAX_AGE_MS = 10 * 60 * 1000L
 
+/** Offline (mesh) alerts are passed on and uploaded for up to this long after SOS. */
+const val RELAY_MAX_AGE_MS = 30 * 60 * 1000L
+
 /**
  * The world is split into a 0.01° grid (~1.1 km tall, ~1 km wide in India). An alert is
  * tagged with its cell, and each phone listens to its own cell plus the 8 surrounding

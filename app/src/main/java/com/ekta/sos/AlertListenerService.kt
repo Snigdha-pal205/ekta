@@ -56,16 +56,21 @@ class AlertListenerService : Service() {
     @SuppressLint("MissingPermission")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createChannels(this)
+        var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+        if (android.os.Build.VERSION.SDK_INT >= 29 && MeshManager.hasPermissions(this)) {
+            types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+        }
         try {
-            ServiceCompat.startForeground(
-                this, ONGOING_ID, ongoingNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
-            )
+            ServiceCompat.startForeground(this, ONGOING_ID, ongoingNotification(), types)
         } catch (e: Exception) {
             // Not allowed to run right now (e.g. location permission was revoked).
             stopSelf()
             return START_NOT_STICKY
         }
+        // (Re)join the mesh every start, e.g. after Bluetooth permission was just granted.
+        Net.init(this)
+        Gateway.init(this)
+        MeshManager.start(this, ::onMeshMessage)
         if (listening) return START_STICKY
         listening = true
         val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 30_000)
@@ -158,15 +163,36 @@ class AlertListenerService : Service() {
         }
     }
 
-    private fun checkDistance(me: Location, lat: Double, lng: Double, id: String) {
+    private fun checkDistance(me: Location, lat: Double, lng: Double, id: String, hops: Int = -1) {
         val result = FloatArray(1)
         Location.distanceBetween(me.latitude, me.longitude, lat, lng, result)
         val distance = result[0]
-        if (distance <= ALERT_RADIUS_METERS) showSosNotification(lat, lng, distance, id)
+        if (distance <= ALERT_RADIUS_METERS) showSosNotification(lat, lng, distance, id, hops)
     }
 
-    private fun showSosNotification(lat: Double, lng: Double, distance: Float, id: String) {
-        val page = AlertActivity.intent(this, lat, lng, distance, id)
+    /** Something arrived over Bluetooth / Wi-Fi Direct from a nearby Ekta phone. */
+    private fun onMeshMessage(msg: MeshMessage) {
+        when (msg.type) {
+            MeshMessage.TYPE_ACK -> SosSession.onAck(msg)
+            MeshMessage.TYPE_SOS -> {
+                if (msg.sender == SosRepository.deviceId(this)) return
+                if (System.currentTimeMillis() - msg.sentAt > RELAY_MAX_AGE_MS) return
+                Gateway.consider(this, msg) // uploads it if we have internet (now or later)
+                if (!seen.add(msg.id)) return // already shown via the internet
+                val me = lastLocation
+                if (me != null) {
+                    checkDistance(me, msg.lat, msg.lng, msg.id, msg.hops)
+                } else {
+                    // We don't know where we are, but we're in Bluetooth range of the
+                    // chain, so better to alert than to stay silent.
+                    showSosNotification(msg.lat, msg.lng, -1f, msg.id, msg.hops)
+                }
+            }
+        }
+    }
+
+    private fun showSosNotification(lat: Double, lng: Double, distance: Float, id: String, hops: Int = -1) {
+        val page = AlertActivity.intent(this, lat, lng, distance, id, hops)
         val fullScreen = PendingIntent.getActivity(
             this, id.hashCode(), page,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
@@ -174,7 +200,10 @@ class AlertListenerService : Service() {
         val n = NotificationCompat.Builder(this, SOS_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sos)
             .setContentTitle("SOS nearby!")
-            .setContentText("Someone ${distance.toInt()} m from you needs help. Tap to see where.")
+            .setContentText(
+                if (distance >= 0) "Someone ${distance.toInt()} m from you needs help. Tap to see where."
+                else "Someone near you needs help. Tap to see where.",
+            )
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setColor(0xFFE84A8A.toInt())
@@ -203,7 +232,7 @@ class AlertListenerService : Service() {
         return NotificationCompat.Builder(this, ONGOING_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sos)
             .setContentTitle("Ekta is listening")
-            .setContentText("You'll be alerted if someone within 500 m needs help.")
+            .setContentText("You'll be alerted if someone within 500 m needs help, even with no network.")
             .setOngoing(true)
             .setContentIntent(open)
             .build()
@@ -216,6 +245,7 @@ class AlertListenerService : Service() {
         private const val REFRESH_EVERY_MS = 5 * 60 * 1000L
         private const val ONGOING_CHANNEL = "ongoing"
         const val SOS_CHANNEL = "sos_alerts"
+        const val RELAY_CHANNEL = "relay"
 
         fun start(context: Context) {
             try {
@@ -231,6 +261,11 @@ class AlertListenerService : Service() {
             val nm = context.getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(
                 NotificationChannel(ONGOING_CHANNEL, "Listening status", NotificationManager.IMPORTANCE_MIN),
+            )
+            nm.createNotificationChannel(
+                NotificationChannel(RELAY_CHANNEL, "Relayed SOS", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "When your phone passed someone's offline SOS to the internet"
+                },
             )
             nm.createNotificationChannel(
                 NotificationChannel(SOS_CHANNEL, "SOS alerts", NotificationManager.IMPORTANCE_HIGH).apply {

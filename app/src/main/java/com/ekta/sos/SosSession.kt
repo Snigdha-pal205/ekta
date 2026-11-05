@@ -1,16 +1,8 @@
 package com.ekta.sos
 
-import android.Manifest
-import android.app.PendingIntent
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.location.Location
-import android.os.Build
-import android.telephony.SmsManager
-import androidx.core.content.ContextCompat
+import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -22,6 +14,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.UUID
 
 /** How often the emergency contact gets a fresh location while an SOS is active. */
 const val LIVE_UPDATE_EVERY_MS = 2 * 60 * 1000L
@@ -29,17 +22,19 @@ const val LIVE_UPDATE_EVERY_MS = 2 * 60 * 1000L
 /** Live location updates stop on their own after this long. */
 const val LIVE_UPDATE_FOR_MS = 30 * 60 * 1000L
 
-/** Demo stand-in for the nearest women's committee. Nothing is ever sent to it. */
-const val DEMO_COMMITTEE_NAME = "Women's Committee (demo)"
-
 enum class Step { IDLE, WORKING, DONE, FAILED, DEMO }
 
 data class SosState(
     val active: Boolean = false,
+    val alertId: String = "",
     val startedAt: Long = 0L,
     val location: Location? = null,
-    val nearby: Step = Step.IDLE,
-    val nearbyNote: String = "",
+    val online: Boolean = false,      // internet right now
+    val signal: Boolean = false,      // an SMS has gone out → mobile signal
+    val upload: Step = Step.IDLE,
+    val uploadNote: String = "",
+    val mesh: Step = Step.IDLE,
+    val meshNote: String = "",
     val contactSms: Step = Step.IDLE,
     val contactNote: String = "",
     val liveUpdatesSent: Int = 0,
@@ -50,22 +45,22 @@ data class SosState(
 data class EmergencyContact(val name: String, val number: String)
 
 /**
- * One SOS from start ("press") to finish ("I'm safe"):
- *  - alerts nearby phones through Firestore (real)
- *  - texts the emergency contact a maps link, then a fresh one every 2 min (real)
- *  - shows what would be texted to the women's committee (demo, not sent)
- *  - shows a call to 112 (demo, no call is placed)
+ * One SOS, from press to "I'm safe". Works with or without network:
+ *  - Mesh (real): sent over Bluetooth / Wi-Fi Direct to nearby Ekta phones, which pass
+ *    it on hop by hop until one with internet uploads it and texts her contact.
+ *  - Internet (real): uploaded to Firestore now, or automatically once online.
+ *  - SMS to her contact (real): queued and sent the moment there's signal; then a fresh
+ *    location every 2 min. Skipped if a gateway phone already texted the contact.
+ *  - 112 call and women's committee SMS: DEMO only.
  */
 object SosSession {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _state = MutableStateFlow(SosState())
     val state: StateFlow<SosState> = _state
     private var liveJob: Job? = null
-    private var receiverRegistered = false
+    private var watchJob: Job? = null
 
-    private const val ACTION_SMS_SENT = "com.ekta.sos.SMS_SENT"
-
-    // ---------- Emergency contact ----------
+    // ---------- Emergency contact & name ----------
 
     fun contact(context: Context): EmergencyContact? {
         val p = context.getSharedPreferences("ekta", Context.MODE_PRIVATE)
@@ -73,8 +68,12 @@ object SosSession {
         return EmergencyContact(p.getString("contact_name", null) ?: number, number)
     }
 
-    fun saveContact(context: Context, name: String, number: String) {
+    fun myName(context: Context) =
+        context.getSharedPreferences("ekta", Context.MODE_PRIVATE).getString("my_name", "") ?: ""
+
+    fun saveContact(context: Context, myName: String, name: String, number: String) {
         context.getSharedPreferences("ekta", Context.MODE_PRIVATE).edit()
+            .putString("my_name", myName.trim())
             .putString("contact_name", name.ifBlank { number })
             .putString("contact_number", number.filter { it.isDigit() || it == '+' })
             .apply()
@@ -85,89 +84,177 @@ object SosSession {
     fun start(context: Context) {
         if (_state.value.active) return
         val app = context.applicationContext
-        registerSmsReceiver(app)
+        Net.init(app)
+        val id = UUID.randomUUID().toString()
+        app.getSharedPreferences("ekta", Context.MODE_PRIVATE).edit().putString("last_alert_id", id).apply()
         _state.value = SosState(
             active = true,
+            alertId = id,
             startedAt = System.currentTimeMillis(),
-            nearby = Step.WORKING,
-            contactSms = Step.WORKING,
-            contactNote = "getting your location…",
+            online = Net.online.value,
+            upload = Step.WORKING, uploadNote = "getting your location…",
+            mesh = Step.WORKING, meshNote = "getting your location…",
+            contactSms = Step.WORKING, contactNote = "getting your location…",
         )
+        watch(app, id)
 
         scope.launch {
-            val loc = try {
-                SosRepository.currentLocation(app)
-            } catch (_: Exception) {
-                null
-            }
+            // GPS works without any network, so this succeeds offline too.
+            val loc = try { SosRepository.currentLocation(app) } catch (_: Exception) { null }
             if (loc == null) {
                 _state.update {
                     it.copy(
-                        nearby = Step.FAILED, nearbyNote = "couldn't get your location. Is GPS on?",
+                        upload = Step.FAILED, uploadNote = "couldn't get your location. Is GPS on?",
+                        mesh = Step.FAILED, meshNote = "couldn't get your location",
                         contactSms = Step.FAILED, contactNote = "couldn't get your location",
                     )
                 }
                 return@launch
             }
-            _state.update {
-                it.copy(location = loc, committeeMessage = sosMessage(loc))
+            _state.update { it.copy(location = loc, committeeMessage = sosText(app, loc)) }
+            val contact = contact(app)
+
+            // 1. Mesh: hand it to every Ekta phone in Bluetooth / Wi-Fi range (real)
+            if (MeshManager.hasPermissions(app)) {
+                MeshManager.originate(
+                    app,
+                    MeshMessage(
+                        type = MeshMessage.TYPE_SOS, id = id, sender = SosRepository.deviceId(app),
+                        lat = loc.latitude, lng = loc.longitude, accuracy = loc.accuracy.toDouble(),
+                        sentAt = System.currentTimeMillis(), hops = 0,
+                        senderName = myName(app),
+                        contactName = contact?.name ?: "", contactNumber = contact?.number ?: "",
+                    ),
+                )
+                _state.update { it.copy(meshNote = "looking for Ekta phones in Bluetooth / Wi-Fi range…") }
+            } else {
+                _state.update { it.copy(mesh = Step.FAILED, meshNote = "Bluetooth / nearby-devices permission not given") }
             }
 
-            // 1. Nearby phones (real)
-            launch {
-                _state.update {
-                    try {
-                        SosRepository.publishAlert(app, loc)
-                        it.copy(nearby = Step.DONE, nearbyNote = "everyone with Ekta within ${ALERT_RADIUS_METERS.toInt()} m")
-                    } catch (e: Exception) {
-                        it.copy(nearby = Step.FAILED, nearbyNote = e.message ?: "no internet?")
+            // 2. Internet: upload now, or automatically once online (real)
+            SosRepository.publishAlert(app, id, loc)
+                .addOnSuccessListener {
+                    _state.update {
+                        if (it.alertId != id) it
+                        else it.copy(upload = Step.DONE, uploadNote = "online · everyone with Ekta within ${ALERT_RADIUS_METERS.toInt()} m alerted")
                     }
                 }
-            }
+                .addOnFailureListener { e ->
+                    val already = (e as? FirebaseFirestoreException)?.code ==
+                        FirebaseFirestoreException.Code.PERMISSION_DENIED
+                    _state.update {
+                        if (it.alertId != id) it
+                        else if (already) it.copy(upload = Step.DONE, uploadNote = "already online via a nearby phone")
+                        else it.copy(upload = Step.FAILED, uploadNote = e.message ?: "upload failed")
+                    }
+                }
 
-            // 2. Emergency contact SMS (real), then live updates
-            val contact = contact(app)
+            // 3. SMS to her contact (real) — waits for signal by itself
             when {
                 contact == null -> _state.update {
                     it.copy(contactSms = Step.FAILED, contactNote = "no emergency contact set")
                 }
-                !canSendSms(app) -> _state.update {
+                !SmsOutbox.canSend(app) -> _state.update {
                     it.copy(contactSms = Step.FAILED, contactNote = "SMS permission not given")
                 }
                 else -> {
-                    sendSms(app, contact.number, sosMessage(loc), tag = "first")
-                    startLiveUpdates(app, contact)
+                    _state.update { it.copy(contactNote = "sending…") }
+                    SmsOutbox.send(app, firstKey(id), contact.number, sosText(app, loc)) {
+                        _state.update {
+                            if (it.alertId != id) it
+                            else it.copy(contactSms = Step.DONE, contactNote = "live location sent · updates every 2 min")
+                        }
+                    }
+                    startLiveUpdates(app, id, contact)
                 }
             }
         }
     }
 
-    /** "I'm safe": stop live updates and let the contact know. */
+    /** "I'm safe": stop updates and let the contact know (sent whenever there's signal). */
     fun stop(context: Context) {
         val app = context.applicationContext
+        val s = _state.value
         liveJob?.cancel()
+        watchJob?.cancel()
+        SmsOutbox.cancel(firstKey(s.alertId))
+        SmsOutbox.cancel(updateKey(s.alertId))
         val contact = contact(app)
-        if (_state.value.active && contact != null && canSendSms(app)) {
-            sendSms(app, contact.number, "Ekta: I'm safe now. Thank you for checking on me.", tag = "safe")
+        if (s.active && contact != null && SmsOutbox.canSend(app)) {
+            SmsOutbox.send(app, "safe-${s.alertId}", contact.number, "Ekta: I'm safe now. Thank you for checking on me.")
         }
         _state.value = SosState()
     }
 
     fun endDemoCall() = _state.update { it.copy(callEnded = true) }
 
-    // ---------- SMS ----------
+    /** A gateway phone got our alert online (and maybe texted our contact). */
+    fun onAck(ack: MeshMessage) {
+        _state.update { s ->
+            if (!s.active || ack.id != s.alertId) return@update s
+            var next = s
+            if (s.upload != Step.DONE) {
+                next = next.copy(upload = Step.DONE, uploadNote = "online through a nearby Ekta phone (gateway)")
+            }
+            if (ack.sms == MeshMessage.SMS_SENT && s.contactSms != Step.DONE) {
+                SmsOutbox.cancel(firstKey(s.alertId)) // don't text the same alert twice
+                next = next.copy(contactSms = Step.DONE, contactNote = "sent by a nearby Ekta phone with signal")
+            } else if (ack.sms == MeshMessage.SMS_QUEUED && s.contactSms != Step.DONE) {
+                next = next.copy(contactNote = "a nearby phone is texting your contact…")
+            }
+            next
+        }
+    }
 
-    fun sosMessage(loc: Location) =
-        "SOS! I need help. My live location: ${mapsLink(loc)} (sent by Ekta SOS)"
+    // ---------- helpers ----------
+
+    private fun firstKey(id: String) = "sos-$id"
+    private fun updateKey(id: String) = "upd-$id"
 
     private fun mapsLink(loc: Location) =
         String.format(Locale.US, "https://maps.google.com/?q=%.6f,%.6f", loc.latitude, loc.longitude)
 
-    fun canSendSms(context: Context) = ContextCompat.checkSelfPermission(
-        context, Manifest.permission.SEND_SMS,
-    ) == PackageManager.PERMISSION_GRANTED
+    fun sosText(context: Context, loc: Location): String {
+        val who = myName(context).ifBlank { "I" }
+        return if (who == "I") "SOS! I need help. My live location: ${mapsLink(loc)} (sent by Ekta SOS)"
+        else "SOS from $who! I need help. My live location: ${mapsLink(loc)} (sent by Ekta SOS)"
+    }
 
-    private fun startLiveUpdates(app: Context, contact: EmergencyContact) {
+    /** Keeps the screen in sync with network, signal and how far the mesh has spread. */
+    private fun watch(app: Context, id: String) {
+        watchJob?.cancel()
+        watchJob = scope.launch {
+            while (isActive && _state.value.alertId == id) {
+                Net.refresh()
+                val reached = MeshManager.reached.value[id] ?: 0
+                _state.update { s ->
+                    s.copy(
+                        online = Net.online.value,
+                        signal = SmsOutbox.lastSentAt.value >= s.startedAt, // only this SOS counts
+                        mesh = when {
+                            s.mesh == Step.FAILED -> Step.FAILED
+                            reached > 0 -> Step.DONE
+                            else -> Step.WORKING
+                        },
+                        meshNote = when {
+                            s.mesh == Step.FAILED -> s.meshNote
+                            reached > 0 -> "passed to $reached phone${if (reached == 1) "" else "s"} nearby · they pass it on"
+                            s.location == null -> s.meshNote
+                            else -> "looking for Ekta phones in Bluetooth / Wi-Fi range…"
+                        },
+                        uploadNote = if (s.upload == Step.WORKING && s.location != null && !Net.online.value)
+                            "no internet · will upload by itself, or via a nearby phone" else s.uploadNote,
+                        contactNote = if (s.contactSms == Step.WORKING && s.location != null &&
+                            SmsOutbox.isPending(firstKey(id)) && SmsOutbox.lastSentAt.value < s.startedAt
+                        ) "no signal · will send automatically when signal returns" else s.contactNote,
+                    )
+                }
+                delay(1_000)
+            }
+        }
+    }
+
+    private fun startLiveUpdates(app: Context, id: String, contact: EmergencyContact) {
         liveJob?.cancel()
         liveJob = scope.launch {
             val started = System.currentTimeMillis()
@@ -175,60 +262,18 @@ object SosSession {
                 delay(LIVE_UPDATE_EVERY_MS)
                 val loc = try { SosRepository.currentLocation(app) } catch (_: Exception) { null } ?: continue
                 _state.update { it.copy(location = loc) }
-                sendSms(app, contact.number, "Ekta SOS update - my live location: ${mapsLink(loc)}", tag = "update")
-            }
-        }
-    }
-
-    private fun smsManager(context: Context): SmsManager =
-        if (Build.VERSION.SDK_INT >= 31) context.getSystemService(SmsManager::class.java)
-        else @Suppress("DEPRECATION") SmsManager.getDefault()
-
-    private fun sendSms(app: Context, number: String, text: String, tag: String) {
-        try {
-            val sent = PendingIntent.getBroadcast(
-                app, tag.hashCode() + (System.currentTimeMillis() % 10_000).toInt(),
-                Intent(ACTION_SMS_SENT).setPackage(app.packageName).putExtra("tag", tag),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
-            val sms = smsManager(app)
-            val parts = sms.divideMessage(text)
-            if (parts.size == 1) {
-                sms.sendTextMessage(number, null, text, sent, null)
-            } else {
-                sms.sendMultipartTextMessage(number, null, parts, arrayListOf(sent).apply {
-                    repeat(parts.size - 1) { add(null) }
-                }, null)
-            }
-        } catch (e: Exception) {
-            if (tag != "safe") _state.update {
-                it.copy(contactSms = Step.FAILED, contactNote = "SMS failed: ${e.message ?: "unknown"}")
-            }
-        }
-    }
-
-    private fun registerSmsReceiver(app: Context) {
-        if (receiverRegistered) return
-        receiverRegistered = true
-        ContextCompat.registerReceiver(app, object : BroadcastReceiver() {
-            override fun onReceive(c: Context, intent: Intent) {
-                val tag = intent.getStringExtra("tag") ?: return
-                if (tag == "safe" || !_state.value.active) return
-                val ok = resultCode == android.app.Activity.RESULT_OK
-                _state.update {
-                    when {
-                        !ok -> it.copy(contactSms = Step.FAILED, contactNote = "SMS not sent. Check balance/SIM")
-                        tag == "update" -> it.copy(
+                // Same key → an unsent older update is replaced by this newer location.
+                SmsOutbox.send(app, updateKey(id), contact.number, "Ekta SOS update - my live location: ${mapsLink(loc)}") {
+                    _state.update {
+                        if (it.alertId != id) it
+                        else it.copy(
                             liveUpdatesSent = it.liveUpdatesSent + 1,
-                            contactNote = "live location sent · ${it.liveUpdatesSent + 1} update(s) so far",
-                        )
-                        else -> it.copy(
                             contactSms = Step.DONE,
-                            contactNote = "live location sent · updates every 2 min",
+                            contactNote = "live location sent · ${it.liveUpdatesSent + 1} update(s) so far",
                         )
                     }
                 }
             }
-        }, IntentFilter(ACTION_SMS_SENT), ContextCompat.RECEIVER_NOT_EXPORTED)
+        }
     }
 }

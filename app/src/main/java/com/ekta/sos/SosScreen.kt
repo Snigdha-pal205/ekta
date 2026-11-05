@@ -164,11 +164,12 @@ private fun ActivePage(
             )
             Spacer(Modifier.height(20.dp))
 
-            DemoCallCard(elapsed, state.callEnded, onEndCall)
+            DemoCallCard(elapsed, state.callEnded, state.signal, onEndCall)
             Spacer(Modifier.height(22.dp))
 
             Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                StatusRow(state.nearby, "NEARBY PHONES", state.nearbyNote.ifBlank { "alerting everyone within $Radius m…" })
+                StatusRow(state.mesh, "BLUETOOTH / WI-FI MESH", state.meshNote)
+                StatusRow(state.upload, if (state.online) "INTERNET" else "INTERNET · OFFLINE", state.uploadNote)
                 StatusRow(
                     state.contactSms,
                     "SMS → ${contact?.name?.uppercase() ?: "EMERGENCY CONTACT"}",
@@ -197,7 +198,7 @@ private fun ActivePage(
 
 /** Looks like an ongoing call, but nothing is dialled. */
 @Composable
-private fun DemoCallCard(elapsed: Long, ended: Boolean, onEnd: () -> Unit) {
+private fun DemoCallCard(elapsed: Long, ended: Boolean, signal: Boolean, onEnd: () -> Unit) {
     Box(Modifier.size(width = 327.dp, height = 116.dp)) {
         Box(
             Modifier
@@ -222,11 +223,19 @@ private fun DemoCallCard(elapsed: Long, ended: Boolean, onEnd: () -> Unit) {
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    if (ended) "Call to 112 ended" else "Calling 112…",
+                    when {
+                        ended -> "Call to 112 ended"
+                        signal -> "Calling 112…"
+                        else -> "Waiting for signal…"
+                    },
                     fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 22.sp, color = Color.White,
                 )
                 Text(
-                    if (ended) "Police / emergency services" else "Police / emergency services · ${clock(elapsed)}",
+                    when {
+                        ended -> "Police / emergency services"
+                        signal -> "Police / emergency services · ${clock(elapsed)}"
+                        else -> "will call 112 the moment there's signal"
+                    },
                     fontFamily = Mono, fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f),
                 )
             }
@@ -302,7 +311,7 @@ private fun InfoColumns(contact: EmergencyContact?) {
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        InfoBlock("WHO HEARS YOU", "everyone with Ekta", "within $Radius metres", Modifier.weight(1f))
+        InfoBlock("WHO HEARS YOU", "everyone with Ekta", "within $Radius m · even offline", Modifier.weight(1f))
         Box(Modifier.width(1.5.dp).height(78.dp).background(Ink))
         InfoBlock(
             "ON SOS",

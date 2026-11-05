@@ -37,6 +37,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
 
     implementation("com.google.android.gms:play-services-location:21.3.0")
+    // Phone-to-phone mesh over Bluetooth / BLE / Wi-Fi Direct, no internet needed
+    implementation("com.google.android.gms:play-services-nearby:19.3.0")
     implementation(platform("com.google.firebase:firebase-bom:35.0.2"))
     implementation("com.google.firebase:firebase-firestore")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")

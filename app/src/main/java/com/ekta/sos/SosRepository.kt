@@ -31,16 +31,49 @@ object SosRepository {
             ?: client.lastLocation.await()
     }
 
-    /** Publishes an SOS at [loc] so nearby phones get alerted. Throws on failure. */
-    suspend fun publishAlert(context: Context, loc: Location) {
-        val alert = mapOf(
-            "lat" to loc.latitude,
-            "lng" to loc.longitude,
-            "accuracy" to loc.accuracy.toDouble(),
-            "cell" to cellOf(loc.latitude, loc.longitude),
-            "senderId" to deviceId(context),
-            "createdAt" to Timestamp.now(),
+    /**
+     * Publishes her own SOS. Uses the alert id as the document id, so the same alert
+     * arriving through a mesh gateway can't be created twice. If she's offline the
+     * Firestore SDK keeps the write and sends it as soon as there's internet.
+     */
+    fun publishAlert(context: Context, id: String, loc: Location) =
+        FirebaseFirestore.getInstance().collection(COLLECTION).document(id).set(
+            mapOf(
+                "lat" to loc.latitude,
+                "lng" to loc.longitude,
+                "accuracy" to loc.accuracy.toDouble(),
+                "cell" to cellOf(loc.latitude, loc.longitude),
+                "senderId" to deviceId(context),
+                "createdAt" to Timestamp.now(),
+                "sentAt" to System.currentTimeMillis(),
+                "via" to "direct",
+                "hops" to 0,
+            ),
         )
-        FirebaseFirestore.getInstance().collection(COLLECTION).add(alert).await()
+
+    /** A gateway uploading someone else's SOS that reached it over the mesh. */
+    suspend fun publishRelayed(msg: MeshMessage, gatewayId: String) {
+        FirebaseFirestore.getInstance().collection(COLLECTION).document(msg.id).set(
+            mapOf(
+                "lat" to msg.lat,
+                "lng" to msg.lng,
+                "accuracy" to msg.accuracy,
+                "cell" to cellOf(msg.lat, msg.lng),
+                "senderId" to msg.sender,
+                "createdAt" to Timestamp.now(), // when it reached the internet
+                "sentAt" to msg.sentAt,         // when she pressed SOS
+                "via" to "mesh",
+                "hops" to msg.hops,
+                "gateway" to gatewayId,
+            ),
+        ).await()
+    }
+
+    /** Who uploaded alert [id], if it's online already (null if unknown/offline). */
+    suspend fun gatewayOf(id: String): String? = try {
+        FirebaseFirestore.getInstance().collection(COLLECTION).document(id)
+            .get(com.google.firebase.firestore.Source.SERVER).await().getString("gateway")
+    } catch (_: Exception) {
+        null
     }
 }
