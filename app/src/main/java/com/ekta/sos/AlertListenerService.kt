@@ -301,9 +301,10 @@ class AlertListenerService : Service() {
             this, notifyId, page,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        // Tapping the notification = she opened the alert → the sound stops.
+        // Tapping the notification opens the full alert page; the sound keeps going
+        // until STOP SOUND (on the page or the notification).
         val open = PendingIntent.getActivity(
-            this, notifyId + 1, AlertActivity.intent(this, lat, lng, distance, id, hops, openedByUser = true),
+            this, notifyId + 1, page,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val stopSound = PendingIntent.getBroadcast(
@@ -329,7 +330,7 @@ class AlertListenerService : Service() {
             // Shows the alert page over the lock screen / when the screen is off.
             .setFullScreenIntent(fullScreen, true)
             .addAction(0, "Stop sound", stopSound)
-            .setAutoCancel(true)
+            .setAutoCancel(false) // stays (with "Stop sound") until the page is dismissed
             .build()
         nm.notify(notifyId, n)
 

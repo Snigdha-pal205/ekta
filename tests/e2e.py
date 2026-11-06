@@ -854,8 +854,11 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("server alert → alert page", wait_alert_page(25) is not None)
     check("sound: server alert rings the same way", wait_until(ringing, 10))
     adb("shell", "input", "keyevent", "KEYCODE_HOME")
-    check("sound: opening the alert from the notification stops it",
-          tap_notification(r"Someone \d+ m from you needs help.*") and wait_until(lambda: not ringing(), 8))
+    check("sound: opening the alert from the notification keeps it ringing",
+          tap_notification(r"Someone \d+ m from you needs help.*") and
+          wait_until(lambda: "AlertActivity" in top_activity(), 8) and (time.sleep(4) or ringing()))
+    check("sound: then 'STOP SOUND' on the page stops it",
+          ui_tap("STOP SOUND", timeout=6) and wait_until(lambda: not ringing(), 6))
     patch_status(sid, "duress", "kd-" + sid, s_lat, s_lng)
     check("server duress → page shows DURESS", screen_has("Do NOT call her phone", timeout=15))
     patch_status(sid, "cancelled", "kd-" + sid, s_lat, s_lng)  # duress key can't cancel

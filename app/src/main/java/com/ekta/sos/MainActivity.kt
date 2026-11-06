@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import android.os.PowerManager
 import android.provider.ContactsContract
 import android.provider.Settings
@@ -28,7 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 
 /** 2 = added Bluetooth mesh (offline SOS). 3 = added cancel / duress PINs. */
-private const val SETUP_VERSION = 3
+private const val SETUP_VERSION = 4
 
 class MainActivity : ComponentActivity() {
 
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
             var showSettings by remember { mutableStateOf(false) }
             var pinMessage by remember { mutableStateOf<String?>(null) }
             var showCancelled by remember { mutableStateOf(false) }
+            var laterKeys by remember { mutableStateOf(setOf<String>()) } // pop-ups she put off this time
             val tick = resumeTick // read so the checks below refresh on resume
 
             fun finishSetup() {
@@ -93,18 +95,63 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val overlayLauncher = rememberLauncherForActivityResult(
+            val autostartLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult(),
             ) { askBluetooth() }
 
+            // Xiaomi only: "Autostart", so Ekta keeps listening after a restart / update.
+            fun askAutostart() {
+                if (XiaomiPopups.autostartAllowed(this)) return askBluetooth()
+                Toast.makeText(
+                    this, "Xiaomi: turn on Autostart for Ekta so alerts still reach you after a restart",
+                    Toast.LENGTH_LONG,
+                ).show()
+                for (i in XiaomiPopups.autostartIntents(this)) {
+                    try {
+                        autostartLauncher.launch(i)
+                        return
+                    } catch (_: Exception) {
+                    }
+                }
+                askBluetooth()
+            }
+
+            val xiaomiLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult(),
+            ) { askAutostart() }
+
+            // Xiaomi only: "Display pop-up windows while running in the background" +
+            // "Show on lock screen", or alerts arrive as a notification, not the full page.
+            fun askXiaomi() {
+                if (XiaomiPopups.allowed(this)) return askAutostart()
+                Toast.makeText(
+                    this,
+                    "Xiaomi: turn on \"Display pop-up windows while running in the background\" " +
+                        "and \"Show on lock screen\" so alerts fill your screen",
+                    Toast.LENGTH_LONG,
+                ).show()
+                for (i in XiaomiPopups.settingsIntents(this)) {
+                    try {
+                        xiaomiLauncher.launch(i)
+                        return
+                    } catch (_: Exception) {
+                    }
+                }
+                askAutostart()
+            }
+
+            val overlayLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult(),
+            ) { askXiaomi() }
+
             fun askOverlay() {
-                if (Settings.canDrawOverlays(this)) return askBluetooth()
+                if (Settings.canDrawOverlays(this)) return askXiaomi()
                 try {
                     overlayLauncher.launch(
                         Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
                     )
                 } catch (_: Exception) {
-                    askBluetooth()
+                    askXiaomi()
                 }
             }
 
@@ -187,8 +234,10 @@ class MainActivity : ComponentActivity() {
                     status = SetupStatus(
                         location = hasLocation(),
                         notifications = hasNotifications(),
-                        alwaysOn = BootReceiver.canListenInBackground(this) && ignoresBatteryOptimizations(),
-                        fullScreen = canUseFullScreen() && Settings.canDrawOverlays(this),
+                        alwaysOn = BootReceiver.canListenInBackground(this) && ignoresBatteryOptimizations() &&
+                            XiaomiPopups.autostartAllowed(this),
+                        fullScreen = canUseFullScreen() && Settings.canDrawOverlays(this) &&
+                            XiaomiPopups.allowed(this),
                         sms = hasSms(),
                         mesh = MeshManager.hasPermissions(this) && bluetoothOn(),
                         contact = contact,
@@ -265,6 +314,31 @@ class MainActivity : ComponentActivity() {
                     onEditContact = { picked = null; showContactDialog = true },
                     onSafeNow = { pinMessage = null; safeNowPad = true },
                     onSettings = { showSettings = true },
+                )
+            }
+
+            // Pop-up for any permission the full-page alert still needs (re-checked on
+            // every return to the app, one at a time, until all are on).
+            val missingPerms = remember(tick, laterKeys) {
+                AlertPermissions.missing(this).filter { it.key !in laterKeys }
+            }
+            val nextPerm = missingPerms.firstOrNull()
+            if (ready && nextPerm != null && !showContactDialog && !showPinSetup && !sos.active && !showCancelled) {
+                PermissionPopup(
+                    item = nextPerm,
+                    remaining = missingPerms.size,
+                    onOpenSettings = {
+                        val opened = nextPerm.intents(this).any { i ->
+                            try {
+                                startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                true
+                            } catch (_: Exception) {
+                                false
+                            }
+                        }
+                        if (!opened) laterKeys = laterKeys + nextPerm.key
+                    },
+                    onLater = { laterKeys = laterKeys + nextPerm.key },
                 )
             }
 

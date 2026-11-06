@@ -111,7 +111,8 @@ object AlarmPlayer {
                     prepare()
                     start()
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.w("EktaAlarm", "can't play alarm", e)
                 player = null
             }
             vibrator = vibrator(app).also {

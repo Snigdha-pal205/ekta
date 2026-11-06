@@ -118,9 +118,8 @@ class AlertActivity : ComponentActivity() {
             at = System.currentTimeMillis(),
             hops = intent.getIntExtra(EXTRA_HOPS, -1),
         )
-        // Opened by the receiver (tapped the notification) → that's "opening the alert":
-        // stop the sound. Shown automatically (full screen) → keep ringing until a button.
-        if (intent.getBooleanExtra(EXTRA_OPENED, false)) AlarmPlayer.stop(id)
+        // Opening the page (tapping the notification, or it popping up) never silences
+        // the alarm: it keeps ringing until she presses STOP SOUND / a button here.
     }
 
     private fun showOverLockScreen() {
@@ -143,11 +142,9 @@ class AlertActivity : ComponentActivity() {
         private const val EXTRA_DISTANCE = "distance"
         private const val EXTRA_ID = "id"
         private const val EXTRA_HOPS = "hops"
-        private const val EXTRA_OPENED = "opened"
 
         fun intent(
             context: Context, lat: Double, lng: Double, distance: Float, id: String, hops: Int = -1,
-            openedByUser: Boolean = false,
         ) =
             Intent(context, AlertActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -156,7 +153,6 @@ class AlertActivity : ComponentActivity() {
                 .putExtra(EXTRA_DISTANCE, distance)
                 .putExtra(EXTRA_ID, id)
                 .putExtra(EXTRA_HOPS, hops)
-                .putExtra(EXTRA_OPENED, openedByUser)
     }
 }
 
