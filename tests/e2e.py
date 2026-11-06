@@ -349,12 +349,17 @@ def send_push(data):
 
 
 def tap_notification(text):
-    adb("shell", "cmd", "statusbar", "expand-notifications")
-    time.sleep(2)
-    ok = ui_tap(text, timeout=8)
-    adb("shell", "cmd", "statusbar", "collapse")
-    time.sleep(2)
-    return ok
+    """Open the notification panel and tap the notification. The panel sometimes
+    isn't fully open when the screen is read, so try up to 3 times."""
+    for _ in range(3):
+        adb("shell", "cmd", "statusbar", "expand-notifications")
+        time.sleep(3)
+        if ui_tap(text, timeout=8):
+            time.sleep(2)
+            return True
+        adb("shell", "cmd", "statusbar", "collapse")
+        time.sleep(2)
+    return False
 
 
 def clear_notifications():
