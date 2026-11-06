@@ -36,7 +36,7 @@ object SosRepository {
      * arriving through a mesh gateway can't be created twice. If she's offline the
      * Firestore SDK keeps the write and sends it as soon as there's internet.
      */
-    fun publishAlert(context: Context, id: String, loc: Location, cancelHash: String, duressHash: String) =
+    fun publishAlert(context: Context, id: String, loc: Location, cancelHash: String, duressHash: String, locHash: String) =
         FirebaseFirestore.getInstance().collection(COLLECTION).document(id).set(
             mapOf(
                 "lat" to loc.latitude,
@@ -51,6 +51,8 @@ object SosRepository {
                 "status" to AlertStatus.ACTIVE,
                 "hashC" to cancelHash,
                 "hashD" to duressHash,
+                "hashL" to locHash,
+                "statusAt" to loc.time,
             ),
         )
 
@@ -71,6 +73,8 @@ object SosRepository {
                 "status" to AlertStatus.ACTIVE,
                 "hashC" to msg.cancelHash,
                 "hashD" to msg.duressHash,
+                "hashL" to msg.locHash,
+                "statusAt" to msg.sentAt,
             ),
         ).await()
     }
@@ -89,6 +93,15 @@ object SosRepository {
                 "lng" to lng,
                 "accuracy" to accuracy,
             ),
+        )
+
+    /**
+     * Her new live location while the SOS is active, proven with the location key
+     * (the server checks its hash). Older points can't overwrite newer ones.
+     */
+    fun updateLocation(id: String, key: String, lat: Double, lng: Double, accuracy: Double, at: Long) =
+        FirebaseFirestore.getInstance().collection(COLLECTION).document(id).update(
+            mapOf("lat" to lat, "lng" to lng, "accuracy" to accuracy, "statusAt" to at, "locKey" to key),
         )
 
     /** Later live-location points while in duress (status stays "duress"). */

@@ -13,6 +13,13 @@ One page, one button. Pressing **SOS**:
 During setup she chooses two 4-digit PINs. Only salted hashes are stored on the phone.
 - **Normal PIN:** shows "Alert cancelled" and stops the alert. Status becomes `cancelled`; a cancel goes out through the Bluetooth mesh and the server, receiving phones stop ringing ("ALERT CANCELLED — she is safe"), and her contact gets "she is safe".
 - **Duress PIN:** shows *exactly* the same "Alert cancelled" screen and returns home, but nothing is actually cancelled. Her phone stays silent (no sound, vibration, notification or SOS screen) and stops its own demo 112 call. It keeps sending her location to the mesh, the server and her contact. Status becomes `duress`; receiving phones show **"DURESS: she was forced to cancel. Do NOT call her phone."**
+
+### Exact live location
+- On SOS, GPS stays on for the whole alert (Google fused location **and** the phone's raw GPS chip, which needs no internet or signal). Ekta waits for a fresh fix; an old "last known" position is only a fallback and is labelled with its age.
+- Every time she moves (more than ~15 m, or the fix gets much more exact), her new position goes to nearby phones over Bluetooth and to the server, so helpers walk to where she is **now**. The alert page shows **LIVE LOCATION · ±N m · updated Xs ago**, and **SHOW ME WHERE** opens walking directions to her newest position.
+- Every SMS says how exact the location is ("accurate to 8 m"). If the first fix was rough or old, her contact gets an extra **"EXACT location now"** SMS as soon as GPS locks on. (SMS texts use plain characters only, so they send reliably everywhere.)
+- GPS switched off: a card on the home screen asks her to turn it on beforehand, and pressing SOS shows Android's one-tap **"Turn on location"** dialog. With no position at all, her contact is texted immediately and the location follows the moment GPS finds her.
+- Location updates are proven with a per-SOS location key (only its hash travels with the SOS). Receivers and the server rules reject points with the wrong key, and an older point can never replace a newer one.
 - **Wrong PIN:** "Wrong PIN, try again", and the alert keeps running.
 
 ### Ending a duress alert: "I'm safe now"
@@ -73,3 +80,5 @@ On first launch the app walks the user through: location (+ "Allow all the time"
 - Without sign-in, anyone with your Firebase config can read alerts. Add Firebase Auth before a real launch.
 - Duress: SMS sent from her phone (the duress warning and her live location) are saved in her phone's normal "Sent" messages, as Android does for every app that isn't the default SMS app.
 - Duress: once the duress key is revealed, anyone holding it could post fake duress location points (they still can't cancel the alert). Signed updates would close this.
+- Live location: the same applies to the location key after her first update (it is then readable). Signed updates or Firebase Auth would close this.
+- Indoors, GPS can take longer and be less exact (tens of metres); the app keeps improving the fix and says how exact it is.

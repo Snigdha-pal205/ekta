@@ -74,6 +74,10 @@ class MainActivity : ComponentActivity() {
                 else if (!hasPins) showPinSetup = true
             }
 
+            val gpsLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartIntentSenderForResult(),
+            ) { }
+
             // ---- Contact picker (no READ_CONTACTS needed: the picker grants this one row) ----
             val contactPicker = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult(),
@@ -301,7 +305,11 @@ class MainActivity : ComponentActivity() {
                 SosScreen(
                     state = sos,
                     contact = contact,
-                    onSos = { SosSession.start(this) },
+                    onSos = {
+                        SosSession.start(this)
+                        // GPS off → Android's one-tap "Turn on location" dialog right away.
+                        if (!LiveLocation.isGpsOn(this)) askTurnOnGps(gpsLauncher)
+                    },
                     onCancel = {
                         if (PinStore.hasPins(this)) {
                             pinMessage = null
@@ -323,7 +331,9 @@ class MainActivity : ComponentActivity() {
                 AlertPermissions.missing(this).filter { it.key !in laterKeys }
             }
             val nextPerm = missingPerms.firstOrNull()
-            if (ready && nextPerm != null && !showContactDialog && !showPinSetup && !sos.active && !showCancelled) {
+            if (ready && nextPerm != null && !showContactDialog && !showPinSetup && !sos.active && !showCancelled &&
+                !showSettings && !safeNowPad && !showPinPad
+            ) {
                 PermissionPopup(
                     item = nextPerm,
                     remaining = missingPerms.size,
@@ -391,6 +401,29 @@ class MainActivity : ComponentActivity() {
         }
     } catch (_: Exception) {
         null
+    }
+
+    /** Google's "Turn on location for better accuracy" dialog (falls back to settings). */
+    private fun askTurnOnGps(launcher: androidx.activity.result.ActivityResultLauncher<androidx.activity.result.IntentSenderRequest>) {
+        val req = com.google.android.gms.location.LocationSettingsRequest.Builder()
+            .addLocationRequest(
+                com.google.android.gms.location.LocationRequest.Builder(
+                    com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, 3_000,
+                ).build(),
+            )
+            .setAlwaysShow(true)
+            .build()
+        com.google.android.gms.location.LocationServices.getSettingsClient(this)
+            .checkLocationSettings(req)
+            .addOnFailureListener { e ->
+                val r = e as? com.google.android.gms.common.api.ResolvableApiException
+                try {
+                    if (r != null) launcher.launch(androidx.activity.result.IntentSenderRequest.Builder(r.resolution).build())
+                    else startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                } catch (_: Exception) {
+                    try { startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) } catch (_: Exception) {}
+                }
+            }
     }
 
     private fun hasLocation() = granted(Manifest.permission.ACCESS_FINE_LOCATION)

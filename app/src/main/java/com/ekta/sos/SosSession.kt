@@ -42,6 +42,7 @@ data class SosState(
     val callEnded: Boolean = false,
     val status: String = AlertStatus.ACTIVE, // active / duress (cancelled resets the state)
     val hidden: Boolean = false,             // duress: alert keeps running but her screen looks normal
+    val gpsOn: Boolean = true,               // Location (GPS) switched on in phone settings
 )
 
 data class EmergencyContact(val name: String, val number: String)
@@ -61,10 +62,20 @@ object SosSession {
     val state: StateFlow<SosState> = _state
     private var liveJob: Job? = null
     private var watchJob: Job? = null
+    private var startJob: Job? = null
+    private var trackJob: Job? = null
 
     /** Secret keys for the running alert. Only their hashes leave the phone with the SOS. */
     private var cancelKey = ""
     private var duressKey = ""
+    private var locKey = "" // proves her live-location updates are really from her
+
+    /** How long GPS keeps tracking her (and sending her position) at most. */
+    private const val TRACK_FOR_MS = 60 * 60 * 1000L
+
+    /** A first fix worse than this gets an "exact location" SMS once GPS locks on. */
+    private const val ROUGH_FIX_M = 50f
+    private const val EXACT_FIX_M = 30f
 
     /** Alerts we cancelled, so a late "SMS sent" note from a gateway can still be matched. */
     private val finished = HashSet<String>()
@@ -105,35 +116,47 @@ object SosSession {
         val id = UUID.randomUUID().toString()
         cancelKey = PinStore.randomHex(16)
         duressKey = PinStore.randomHex(16)
+        locKey = PinStore.randomHex(16)
         val cancelHash = PinStore.sha256Hex(cancelKey)
         val duressHash = PinStore.sha256Hex(duressKey)
+        val locHash = PinStore.sha256Hex(locKey)
         app.getSharedPreferences("ekta", Context.MODE_PRIVATE).edit().putString("last_alert_id", id).apply()
         _state.value = SosState(
             active = true,
             alertId = id,
             startedAt = System.currentTimeMillis(),
             online = Net.online.value,
-            upload = Step.WORKING, uploadNote = "getting your location…",
-            mesh = Step.WORKING, meshNote = "getting your location…",
-            contactSms = Step.WORKING, contactNote = "getting your location…",
+            gpsOn = LiveLocation.isGpsOn(app),
+            upload = Step.WORKING, uploadNote = "getting your exact location…",
+            mesh = Step.WORKING, meshNote = "getting your exact location…",
+            contactSms = Step.WORKING, contactNote = "getting your exact location…",
         )
         watch(app, id)
+        // GPS on for the whole SOS: works with no internet and no signal.
+        LiveLocation.start(app)
 
-        scope.launch {
-            // GPS works without any network, so this succeeds offline too.
-            val loc = try { SosRepository.currentLocation(app) } catch (_: Exception) { null }
-            if (loc == null) {
-                _state.update {
-                    it.copy(
-                        upload = Step.FAILED, uploadNote = "couldn't get your location. Is GPS on?",
-                        mesh = Step.FAILED, meshNote = "couldn't get your location",
-                        contactSms = Step.FAILED, contactNote = "couldn't get your location",
-                    )
-                }
-                return@launch
-            }
-            _state.update { it.copy(location = loc, committeeMessage = sosText(app, loc)) }
+        startJob?.cancel()
+        startJob = scope.launch {
             val contact = contact(app)
+            // 1) A fresh fix (usually a few seconds; GPS needs a view of the sky).
+            var loc = LiveLocation.awaitFresh(15_000)
+            // 2) None yet: use the last position the phone knows, clearly marked as old,
+            //    and keep tracking — the exact position follows as soon as GPS has it.
+            if (loc == null) loc = LiveLocation.lastKnown(app)?.also { LiveLocation.offer(it) }
+            // 3) Nothing at all (GPS off / brand-new phone): don't wait silently. Text her
+            //    contact now, and send everything the moment a position arrives.
+            if (loc == null) {
+                val msg = "no location yet · " + if (LiveLocation.isGpsOn(app))
+                    "searching GPS, go near a window or outside" else "turn on Location (GPS)!"
+                _state.update { it.copy(upload = Step.WORKING, uploadNote = msg, mesh = Step.WORKING, meshNote = msg) }
+                if (contact != null && SmsOutbox.canSend(app)) {
+                    SmsOutbox.send(app, noLocKey(id), contact.number, noLocationText(app))
+                    _state.update { it.copy(contactNote = "SOS texted · location follows as soon as GPS finds you") }
+                }
+                loc = LiveLocation.awaitAny()
+            }
+            if (_state.value.alertId != id) return@launch
+            _state.update { it.copy(location = loc, committeeMessage = sosText(app, loc)) }
 
             // 1. Mesh: hand it to every Ekta phone in Bluetooth / Wi-Fi range (real)
             if (MeshManager.hasPermissions(app)) {
@@ -145,7 +168,7 @@ object SosSession {
                         sentAt = System.currentTimeMillis(), hops = 0,
                         senderName = myName(app),
                         contactName = contact?.name ?: "", contactNumber = contact?.number ?: "",
-                        cancelHash = cancelHash, duressHash = duressHash,
+                        cancelHash = cancelHash, duressHash = duressHash, locHash = locHash,
                     ),
                 )
                 _state.update { it.copy(meshNote = "looking for Ekta phones in Bluetooth / Wi-Fi range…") }
@@ -154,7 +177,7 @@ object SosSession {
             }
 
             // 2. Internet: upload now, or automatically once online (real)
-            SosRepository.publishAlert(app, id, loc, cancelHash, duressHash)
+            SosRepository.publishAlert(app, id, loc, cancelHash, duressHash, locHash)
                 .addOnSuccessListener {
                     _state.update {
                         if (it.alertId != id) it
@@ -171,7 +194,10 @@ object SosSession {
                     }
                 }
 
-            // 3. SMS to her contact (real) — waits for signal by itself
+            // 3. Live location: every move goes to nearby phones (mesh + server).
+            startTracking(app, id, sentLoc = loc, contact = contact)
+
+            // 4. SMS to her contact (real) — waits for signal by itself
             when {
                 contact == null -> _state.update {
                     it.copy(contactSms = Step.FAILED, contactNote = "no emergency contact set")
@@ -191,6 +217,77 @@ object SosSession {
                 }
             }
         }
+    }
+
+    /**
+     * GPS keeps running: each time she moves (or the fix gets more exact) the new
+     * position goes to nearby phones over Bluetooth and to the server, so helpers
+     * always walk to where she is NOW. Also sends her contact an "exact location" SMS
+     * once if the first fix was rough or old.
+     */
+    private fun startTracking(app: Context, id: String, sentLoc: Location, contact: EmergencyContact?) {
+        trackJob?.cancel()
+        trackJob = scope.launch {
+            val started = System.currentTimeMillis()
+            var last = sentLoc
+            var lastSentAt = System.currentTimeMillis()
+            var exactSmsSent = sentLoc.accuracy <= ROUGH_FIX_M && LiveLocation.ageMs(sentLoc) <= LiveLocation.FRESH_MS
+            LiveLocation.best.collect { loc ->
+                if (loc == null || _state.value.alertId != id) return@collect
+                if (System.currentTimeMillis() - started > TRACK_FOR_MS) {
+                    LiveLocation.stop(app)
+                    return@collect
+                }
+                _state.update { if (it.alertId == id) it.copy(location = loc) else it }
+
+                if (!exactSmsSent && contact != null && SmsOutbox.canSend(app) &&
+                    loc.accuracy <= EXACT_FIX_M && LiveLocation.ageMs(loc) <= LiveLocation.FRESH_MS
+                ) {
+                    exactSmsSent = true
+                    SmsOutbox.send(app, exactKey(id), contact.number, exactText(app, loc))
+                }
+
+                val now = System.currentTimeMillis()
+                val moved = distance(last, loc)
+                val sharper = loc.accuracy < last.accuracy - 10f && loc.accuracy < last.accuracy * 0.7f
+                val due = (moved > maxOf(15f, loc.accuracy) || sharper) && now - lastSentAt >= 10_000 ||
+                    (now - lastSentAt >= 60_000 && loc.time > last.time)
+                if (!due) return@collect
+                last = loc
+                lastSentAt = now
+                sendLocation(app, id, loc)
+            }
+        }
+    }
+
+    /** One live-location point → mesh (Bluetooth) + server, proven with the right key. */
+    private fun sendLocation(app: Context, id: String, loc: Location) {
+        val duress = _state.value.status == AlertStatus.DURESS
+        val at = System.currentTimeMillis()
+        MeshManager.originate(
+            app,
+            MeshMessage(
+                type = MeshMessage.TYPE_STATUS, id = id, sender = SosRepository.deviceId(app),
+                lat = loc.latitude, lng = loc.longitude, accuracy = loc.accuracy.toDouble(), sentAt = at,
+                senderName = myName(app), contactNumber = contact(app)?.number ?: "",
+                status = if (duress) AlertStatus.DURESS else AlertStatus.ACTIVE,
+                secret = if (duress) duressKey else locKey,
+            ),
+        )
+        if (duress) SosRepository.updateDuressLocation(id, loc.latitude, loc.longitude, loc.accuracy.toDouble(), at)
+        else SosRepository.updateLocation(id, locKey, loc.latitude, loc.longitude, loc.accuracy.toDouble(), at)
+    }
+
+    private fun distance(a: Location, b: Location): Float {
+        val r = FloatArray(1)
+        Location.distanceBetween(a.latitude, a.longitude, b.latitude, b.longitude, r)
+        return r[0]
+    }
+
+    private fun stopTracking(app: Context) {
+        startJob?.cancel()
+        trackJob?.cancel()
+        LiveLocation.stop(app)
     }
 
     /**
@@ -218,6 +315,9 @@ object SosSession {
     private fun cancelForReal(app: Context) {
         val s = _state.value
         val id = s.alertId
+        stopTracking(app)
+        SmsOutbox.cancel(noLocKey(id))
+        SmsOutbox.cancel(exactKey(id))
         liveJob?.cancel()
         watchJob?.cancel()
         SmsOutbox.cancel(firstKey(id))
@@ -225,7 +325,7 @@ object SosSession {
         SmsOutbox.cancel(duressSmsKey(id))
         MeshManager.drop("sos:$id") // stop spreading the SOS
         finished += id
-        broadcastStatus(app, id, AlertStatus.CANCELLED, cancelKey, s.location)
+        broadcastStatus(app, id, AlertStatus.CANCELLED, cancelKey, LiveLocation.best.value ?: s.location)
         val safeText = "Ekta: ${myName(app).ifBlank { "She" }} is safe, alert cancelled (cancelled with her PIN). Thank you."
         contact(app)?.let { SmsOutbox.send(app, safeKey(id), it.number, safeText) }
         DemoNotify.committee(safeText)
@@ -239,7 +339,7 @@ object SosSession {
         // Her phone: looks exactly like a normal cancel. No sound, vibration or text.
         _state.update { it.copy(hidden = true, status = AlertStatus.DURESS, callEnded = true) }
         // Everyone else: she was forced to cancel. (The SOS keeps spreading too.)
-        broadcastStatus(app, id, AlertStatus.DURESS, duressKey, s.location)
+        broadcastStatus(app, id, AlertStatus.DURESS, duressKey, LiveLocation.best.value ?: s.location)
         DemoNotify.committee(duressText(app, s.location))
         DemoNotify.police(duressText(app, s.location))
         contact(app)?.let { c ->
@@ -266,32 +366,24 @@ object SosSession {
         SosRepository.updateStatus(id, status, key, lat, lng, acc, now) // queued if offline
     }
 
-    /** Duress: keep sending her location silently (mesh + server + SMS to her contact). */
+    /**
+     * Duress: keep sending her location silently. Bluetooth + server points come from
+     * the live tracker (now marked "duress"); her contact gets an SMS every 2 min.
+     */
     private fun startDuressTracking(app: Context, id: String, contact: EmergencyContact?) {
         liveJob?.cancel()
         liveJob = scope.launch {
             val started = System.currentTimeMillis()
             while (isActive && System.currentTimeMillis() - started < DURESS_TRACK_MS) {
                 delay(LIVE_UPDATE_EVERY_MS)
-                val loc = try { SosRepository.currentLocation(app) } catch (_: Exception) { null } ?: continue
-                _state.update { it.copy(location = loc) }
-                val now = System.currentTimeMillis()
-                MeshManager.originate(
-                    app,
-                    MeshMessage(
-                        type = MeshMessage.TYPE_STATUS, id = id, sender = SosRepository.deviceId(app),
-                        lat = loc.latitude, lng = loc.longitude, accuracy = loc.accuracy.toDouble(), sentAt = now,
-                        senderName = myName(app), contactNumber = contact?.number ?: "",
-                        status = AlertStatus.DURESS, secret = duressKey,
-                    ),
-                )
-                SosRepository.updateDuressLocation(id, loc.latitude, loc.longitude, loc.accuracy.toDouble(), now)
+                val loc = LiveLocation.best.value ?: continue
                 contact?.let {
-                    SmsOutbox.send(app, updateKey(id), it.number, "EKTA DURESS update - live location: ${mapsLink(loc)} Do NOT call her phone.")
+                    SmsOutbox.send(app, updateKey(id), it.number, "EKTA DURESS update - live location: ${mapsLink(loc)}${accuracyNote(loc)} Do NOT call her phone.")
                 }
             }
             // Tracking window over: end quietly.
             if (_state.value.alertId == id) {
+                stopTracking(app)
                 watchJob?.cancel()
                 _state.value = SosState()
             }
@@ -300,7 +392,7 @@ object SosSession {
 
     private fun duressText(app: Context, loc: Location?): String {
         val who = myName(app).ifBlank { "She" }
-        val where = loc?.let { " Live location: ${mapsLink(it)}" } ?: ""
+        val where = loc?.let { " Live location: ${mapsLink(it)}${accuracyNote(it)}" } ?: ""
         return "EKTA DURESS: $who was forced to cancel her SOS and may still be in danger. Do NOT call her phone.$where"
     }
 
@@ -334,14 +426,38 @@ object SosSession {
     private fun updateKey(id: String) = "upd-$id"
     private fun safeKey(id: String) = "safe-$id"
     private fun duressSmsKey(id: String) = "duress-$id"
+    private fun noLocKey(id: String) = "noloc-$id"
+    private fun exactKey(id: String) = "exact-$id"
+
+    /** " (accurate to 8 m)", or how old the position is if it isn't fresh. */
+    private fun accuracyNote(loc: Location): String {
+        // Plain GSM characters only (no "±"): keeps every SMS in the basic alphabet,
+        // which every phone and network sends reliably.
+        val acc = " (accurate to ${loc.accuracy.toInt().coerceAtLeast(1)} m)"
+        val age = LiveLocation.ageMs(loc)
+        return if (age <= LiveLocation.FRESH_MS) acc
+        else " (last known position, ${age / 60_000} min old - exact location follows)"
+    }
+
+    private fun noLocationText(context: Context): String {
+        val who = myName(context).ifBlank { "I" }
+        val head = if (who == "I") "SOS! I need help." else "SOS from $who! I need help."
+        return "$head My phone is still finding my exact location - it will be texted to you in a moment. (sent by Ekta SOS)"
+    }
+
+    private fun exactText(context: Context, loc: Location): String {
+        val who = myName(context).ifBlank { "My" }
+        val whose = if (who == "My") "My" else "$who's"
+        return "Ekta SOS: $whose EXACT location now: ${mapsLink(loc)}${accuracyNote(loc)}"
+    }
 
     private fun mapsLink(loc: Location) =
         String.format(Locale.US, "https://maps.google.com/?q=%.6f,%.6f", loc.latitude, loc.longitude)
 
     fun sosText(context: Context, loc: Location): String {
         val who = myName(context).ifBlank { "I" }
-        return if (who == "I") "SOS! I need help. My live location: ${mapsLink(loc)} (sent by Ekta SOS)"
-        else "SOS from $who! I need help. My live location: ${mapsLink(loc)} (sent by Ekta SOS)"
+        return if (who == "I") "SOS! I need help. My live location: ${mapsLink(loc)}${accuracyNote(loc)} (sent by Ekta SOS)"
+        else "SOS from $who! I need help. My live location: ${mapsLink(loc)}${accuracyNote(loc)} (sent by Ekta SOS)"
     }
 
     /** Keeps the screen in sync with network, signal and how far the mesh has spread. */
@@ -350,10 +466,13 @@ object SosSession {
         watchJob = scope.launch {
             while (isActive && _state.value.alertId == id) {
                 Net.refresh()
+                val gps = LiveLocation.isGpsOn(app)
+                if (gps) LiveLocation.ensureGps(app)
                 val reached = MeshManager.reached.value[id] ?: 0
                 _state.update { s ->
                     s.copy(
                         online = Net.online.value,
+                        gpsOn = gps,
                         signal = SmsOutbox.lastSentAt.value >= s.startedAt, // only this SOS counts
                         mesh = when {
                             s.mesh == Step.FAILED -> Step.FAILED
@@ -384,10 +503,9 @@ object SosSession {
             val started = System.currentTimeMillis()
             while (isActive && System.currentTimeMillis() - started < LIVE_UPDATE_FOR_MS) {
                 delay(LIVE_UPDATE_EVERY_MS)
-                val loc = try { SosRepository.currentLocation(app) } catch (_: Exception) { null } ?: continue
-                _state.update { it.copy(location = loc) }
+                val loc = LiveLocation.best.value ?: continue
                 // Same key → an unsent older update is replaced by this newer location.
-                SmsOutbox.send(app, updateKey(id), contact.number, "Ekta SOS update - my live location: ${mapsLink(loc)}") {
+                SmsOutbox.send(app, updateKey(id), contact.number, "Ekta SOS update - my live location: ${mapsLink(loc)}${accuracyNote(loc)}") {
                     _state.update {
                         if (it.alertId != id) it
                         else it.copy(

@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,21 +73,29 @@ class AlertActivity : ComponentActivity() {
                 val status = info?.status ?: AlertStatus.ACTIVE
                 AlertScreen(
                     alert = a.copy(lat = info?.lat ?: a.lat, lng = info?.lng ?: a.lng),
+                    accuracy = info?.accuracy,
+                    locationAt = info?.updatedAt ?: 0L,
                     status = status,
                     ringing = ringing == a.id,
                     onStopSound = { AlarmPlayer.stop(a.id) },
                     onOpenMap = {
+                        // Her NEWEST position, as walking directions straight to her.
+                        val lat = info?.lat ?: a.lat
+                        val lng = info?.lng ?: a.lng
                         done(a.id)
-                        try {
-                            startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse("geo:${a.lat},${a.lng}?q=${a.lat},${a.lng}(SOS)")),
-                            )
-                        } catch (_: Exception) {
-                            startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse("https://maps.google.com/?q=${a.lat},${a.lng}")),
-                            )
+                        val opened = listOf(
+                            "google.navigation:q=$lat,$lng&mode=w",
+                            "geo:$lat,$lng?q=$lat,$lng(SOS)",
+                            "https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=walking",
+                        ).any { uri ->
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))
+                                true
+                            } catch (_: Exception) {
+                                false
+                            }
                         }
-                        finish()
+                        if (opened) finish()
                     },
                     onDismiss = { done(a.id); finish() },
                 )
@@ -161,6 +170,8 @@ private val AlertPink = Color(0xFFF06A9E)
 @Composable
 private fun AlertScreen(
     alert: AlertActivity.Alert,
+    accuracy: Double?,
+    locationAt: Long,
     status: String,
     ringing: Boolean,
     onStopSound: () -> Unit,
@@ -256,6 +267,24 @@ private fun AlertScreen(
                 )
             }
             Spacer(Modifier.height(10.dp))
+            // Her live location: how exact it is and how fresh.
+            var now by remember { mutableStateOf(System.currentTimeMillis()) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    kotlinx.coroutines.delay(1_000)
+                    now = System.currentTimeMillis()
+                }
+            }
+            val ago = if (locationAt > 0) ((now - locationAt) / 1000).coerceAtLeast(0) else -1
+            Text(
+                buildString {
+                    append("LIVE LOCATION")
+                    if (accuracy != null && accuracy > 0) append(" · ±${accuracy.toInt()} m")
+                    if (ago >= 0) append(" · updated ${if (ago < 60) "${ago}s" else "${ago / 60} min"} ago")
+                },
+                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
+                textAlign = TextAlign.Center,
+            )
             Text(
                 "Alert received at ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(alert.at))}",
                 fontFamily = Mono, fontSize = 13.sp, color = Ink,
@@ -277,7 +306,7 @@ private fun AlertScreen(
             }
             ChunkyButton(width = 280.dp, height = 74.dp, onClick = onOpenMap) {
                 Text("SHOW ME WHERE", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 19.sp, color = Ink, letterSpacing = 1.sp)
-                Text("opens the map", fontFamily = Mono, fontSize = 11.sp, color = Ink)
+                Text("walking directions to her, live", fontFamily = Mono, fontSize = 11.sp, color = Ink)
             }
             Spacer(Modifier.height(18.dp))
             ChunkyButton(width = 280.dp, height = 54.dp, color = Color.White, onClick = onDismiss) {

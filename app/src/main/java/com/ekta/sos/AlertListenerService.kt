@@ -161,6 +161,8 @@ class AlertListenerService : Service() {
             statusAt = doc.getLong("statusAt") ?: 0L,
             cancelHash = doc.getString("hashC") ?: "",
             duressHash = doc.getString("hashD") ?: "",
+            locHash = doc.getString("hashL") ?: "",
+            accuracy = doc.getDouble("accuracy"),
             isNew = change.type == DocumentChange.Type.ADDED,
         )
     }
@@ -172,10 +174,12 @@ class AlertListenerService : Service() {
     private fun onServerAlert(
         id: String, senderId: String, lat: Double?, lng: Double?, createdAt: Long?,
         status: String, statusAt: Long, cancelHash: String, duressHash: String, isNew: Boolean,
+        locHash: String = "", accuracy: Double? = null,
     ) {
         if (senderId == SosRepository.deviceId(this)) return // never alert her own phone
-        AlertStatus.rememberHashes(id, cancelHash, duressHash)
-        if (status != AlertStatus.ACTIVE) applyStatus(id, status, lat, lng, statusAt)
+        AlertStatus.rememberHashes(id, cancelHash, duressHash, locHash)
+        // Status change, or simply her newest live location (an open alert page follows it).
+        applyStatus(id, status, lat, lng, statusAt, accuracy)
         if (isNew && status != AlertStatus.CANCELLED && lat != null && lng != null && createdAt != null) {
             handleAlert(id, lat, lng, createdAt)
         }
@@ -193,13 +197,15 @@ class AlertListenerService : Service() {
             statusAt = data.getString("statusAt")?.toLongOrNull() ?: System.currentTimeMillis(),
             cancelHash = data.getString("hashC") ?: "",
             duressHash = data.getString("hashD") ?: "",
+            locHash = data.getString("hashL") ?: "",
+            accuracy = data.getString("accuracy")?.toDoubleOrNull(),
             isNew = true,
         )
     }
 
     /** She ended the SOS with a PIN (or it's a newer duress location). */
-    private fun applyStatus(id: String, status: String, lat: Double?, lng: Double?, at: Long) {
-        val changed = AlertStatus.set(id, status, lat, lng, at)
+    private fun applyStatus(id: String, status: String, lat: Double?, lng: Double?, at: Long, accuracy: Double? = null) {
+        val changed = AlertStatus.set(id, status, lat, lng, at, accuracy)
         when (status) {
             AlertStatus.CANCELLED -> {
                 MeshManager.drop("sos:$id") // stop spreading it
@@ -262,13 +268,14 @@ class AlertListenerService : Service() {
                 Gateway.considerStatus(this, msg) // put it online if we have internet
                 // Act on it only if the key matches the SOS we saw (so nobody can fake a cancel).
                 if (AlertStatus.verify(msg.id, msg.status, msg.secret)) {
-                    applyStatus(msg.id, msg.status, msg.lat, msg.lng, msg.sentAt)
+                    applyStatus(msg.id, msg.status, msg.lat, msg.lng, msg.sentAt, msg.accuracy)
                 }
             }
             MeshMessage.TYPE_SOS -> {
                 if (msg.sender == SosRepository.deviceId(this)) return
-                AlertStatus.rememberHashes(msg.id, msg.cancelHash, msg.duressHash)
+                AlertStatus.rememberHashes(msg.id, msg.cancelHash, msg.duressHash, msg.locHash)
                 if (AlertStatus.statusOf(msg.id) == AlertStatus.CANCELLED) return
+                AlertStatus.set(msg.id, AlertStatus.ACTIVE, msg.lat, msg.lng, msg.sentAt, msg.accuracy)
                 if (System.currentTimeMillis() - msg.sentAt > RELAY_MAX_AGE_MS) return
                 Gateway.consider(this, msg) // uploads it if we have internet (now or later)
                 if (!seen.add(msg.id)) return // already shown via the internet

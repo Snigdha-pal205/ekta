@@ -41,6 +41,11 @@ object Gateway {
         if (msg.type != MeshMessage.TYPE_STATUS) return
         if (msg.sender == SosRepository.deviceId(app)) return
         if (msg.status == AlertStatus.CANCELLED) waiting.remove(msg.id) // cancelled: don't upload the SOS any more
+        if (msg.status == AlertStatus.ACTIVE) {
+            // Live location: only the newest point matters.
+            if (waitingStatus.values.any { it.id == msg.id && it.status == msg.status && it.sentAt >= msg.sentAt }) return
+            waitingStatus.values.removeAll { it.id == msg.id && it.status == msg.status }
+        }
         waitingStatus.putIfAbsent(msg.key, msg)
         scope.launch { flush() }
         startRetryLoop()
@@ -49,6 +54,23 @@ object Gateway {
     private suspend fun flushStatus() {
         for (msg in waitingStatus.values.toList()) {
             if (!busy.add(msg.key)) continue
+            if (msg.status == AlertStatus.ACTIVE) {
+                // Her new live location (no SMS: her own phone texts updates).
+                try {
+                    withTimeout(20_000) {
+                        SosRepository.updateLocation(msg.id, msg.secret, msg.lat, msg.lng, msg.accuracy, msg.sentAt).await()
+                    }
+                    waitingStatus.remove(msg.key)
+                } catch (e: FirebaseFirestoreException) {
+                    // NOT_FOUND: her SOS isn't online yet, retry later. Anything else
+                    // (cancelled, older than what's stored): drop it.
+                    if (e.code != FirebaseFirestoreException.Code.NOT_FOUND) waitingStatus.remove(msg.key)
+                } catch (_: Exception) {
+                } finally {
+                    busy.remove(msg.key)
+                }
+                continue
+            }
             try {
                 withTimeout(20_000) {
                     SosRepository.updateStatus(

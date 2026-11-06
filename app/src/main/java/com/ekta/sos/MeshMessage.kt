@@ -10,8 +10,9 @@ import org.json.JSONObject
  *    with signal (the "gateway") can upload it and SMS her emergency contact.
  *  - ACK: a gateway got it onto the internet. Travels back so her phone can show it.
  *  - STATUS: she ended the SOS with a PIN — "cancelled" (normal PIN) or "duress"
- *    (forced to cancel; also carries her latest location). It reveals a secret key
- *    whose hash came with the SOS, so nobody else can fake a cancel.
+ *    (forced to cancel; also carries her latest location) — or "active": a new live
+ *    location while the SOS runs. It reveals a secret key whose hash came with the
+ *    SOS, so nobody else can fake a cancel.
  */
 data class MeshMessage(
     val type: String,          // TYPE_SOS, TYPE_ACK or TYPE_STATUS
@@ -29,7 +30,8 @@ data class MeshMessage(
     val sms: String = "",      // ACK: SMS_SENT / SMS_QUEUED / SMS_NONE
     val cancelHash: String = "", // SOS: sha256 of the cancel key
     val duressHash: String = "", // SOS: sha256 of the duress key
-    val status: String = "",   // STATUS: cancelled / duress. ACK: which message the SMS was for ("" = the SOS)
+    val locHash: String = "",    // SOS: sha256 of the live-location key
+    val status: String = "",   // STATUS: cancelled / duress / active (location). ACK: which message the SMS was for ("" = the SOS)
     val secret: String = "",   // STATUS: the revealed key
 ) {
     /** One key per distinct message, so each is passed on only once per phone. */
@@ -45,7 +47,7 @@ data class MeshMessage(
             TYPE_SOS -> {
                 put("s", sender); put("la", lat); put("lo", lng); put("ac", accuracy); put("ts", sentAt)
                 put("n", senderName); put("cn", contactName); put("cp", contactNumber)
-                put("hc", cancelHash); put("hd", duressHash)
+                put("hc", cancelHash); put("hd", duressHash); put("hl", locHash)
             }
             TYPE_STATUS -> {
                 put("s", sender); put("la", lat); put("lo", lng); put("ac", accuracy); put("ts", sentAt)
@@ -81,6 +83,7 @@ data class MeshMessage(
             sms = o.optString("sms"),
             cancelHash = o.optString("hc"),
             duressHash = o.optString("hd"),
+            locHash = o.optString("hl"),
             status = o.optString("st"),
             secret = o.optString("k"),
         )

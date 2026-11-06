@@ -5,6 +5,10 @@ service cloud.firestore {
       function data() { return request.resource.data; }
       function keyHash() { return hashing.sha256(data().statusKey).toHexString().lower(); }
       function changed() { return data().diff(resource.data).affectedKeys(); }
+      // A location point older than the one stored can never replace it.
+      function newerPoint() {
+        return data().statusAt is int && data().statusAt >= resource.data.get('statusAt', 0);
+      }
 
       // Anyone with the app can read alerts (the app filters by distance on-device).
       allow read: if true;
@@ -13,7 +17,8 @@ service cloud.firestore {
       // phone that relayed it over the mesh ("mesh").
       allow create: if data().keys().hasOnly(
                          ['lat', 'lng', 'accuracy', 'cell', 'senderId', 'createdAt',
-                          'sentAt', 'via', 'hops', 'gateway', 'status', 'hashC', 'hashD'])
+                          'sentAt', 'via', 'hops', 'gateway', 'status', 'hashC', 'hashD',
+                          'hashL', 'statusAt'])
                     && data().lat is number
                     && data().lng is number
                     && data().cell is string
@@ -50,6 +55,17 @@ service cloud.firestore {
             resource.data.get('status', 'active') == 'duress'
             && changed().hasOnly(['lat', 'lng', 'accuracy', 'statusAt'])
             && data().lat is number && data().lng is number
+            && newerPoint()
+          )
+          // While active, her live location keeps updating — only with the location
+          // key whose hash came with the SOS.
+          || (
+            resource.data.get('status', 'active') == 'active'
+            && changed().hasOnly(['lat', 'lng', 'accuracy', 'statusAt', 'locKey'])
+            && data().lat is number && data().lng is number
+            && data().locKey is string
+            && hashing.sha256(data().locKey).toHexString().lower() == resource.data.get('hashL', '-')
+            && newerPoint()
           );
 
       allow delete: if false;

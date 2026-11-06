@@ -10,6 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,10 +24,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 
 /**
- * Permissions an alert needs to fill the screen and ring. Any that are off are shown
+ * Settings an alert needs: exact location, filling the screen and ringing. Any that are off are shown
  * one by one in a pop-up with a button straight to the right settings page.
  */
 object AlertPermissions {
@@ -53,6 +54,11 @@ object AlertPermissions {
                 appDetails(ctx),
             )
         }
+        if (!LiveLocation.isGpsOn(c)) list += Missing(
+            "gps", "LOCATION (GPS) IS OFF",
+            "Without it nobody can find you: your SOS would go out with no exact location.",
+            "Turn on \"Use location\" (and \"Google Location Accuracy\" if you see it).",
+        ) { ctx -> listOf(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS), appDetails(ctx)) }
         if (Build.VERSION.SDK_INT >= 34 && !nm.canUseFullScreenIntent()) list += Missing(
             "fullscreen", "FULL-SCREEN ALERTS",
             "So a nearby SOS fills your screen, even when the phone is locked.",
@@ -96,27 +102,33 @@ fun PermissionPopup(
     onOpenSettings: () -> Unit,
     onLater: () -> Unit,
 ) {
-    Dialog(onDismissRequest = onLater) {
+    // A card at the TOP of the screen, not a blocking dialog: the SOS button below
+    // must always work with one tap, even while this is showing.
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
         Column(
             Modifier
                 .fillMaxWidth()
                 .background(SkyBottom)
                 .border(2.dp, Ink)
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
                 "PERMISSION NEEDED" + if (remaining > 1) " (1 of $remaining)" else "",
                 fontFamily = Mono, fontSize = 11.sp, color = Ink, letterSpacing = 1.sp,
             )
-            Text(item.title, fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 18.sp, color = Ink, letterSpacing = 1.sp)
-            Text(item.why, fontFamily = Mono, fontSize = 13.sp, color = Ink)
+            Text(item.title, fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 16.sp, color = Ink, letterSpacing = 1.sp)
+            Text(item.why, fontFamily = Mono, fontSize = 11.sp, color = Ink)
             Text(
                 item.turnOn,
-                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
-                modifier = Modifier.fillMaxWidth().background(Color.White).padding(10.dp),
+                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Ink,
+                modifier = Modifier.fillMaxWidth().background(Color.White).padding(8.dp),
             )
-            Text("Then press back to return to Ekta.", fontFamily = Mono, fontSize = 11.sp, color = Ink)
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,

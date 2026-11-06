@@ -107,6 +107,12 @@ object MeshManager {
     // ---------- holding & pushing ----------
 
     private fun hold(msg: MeshMessage) {
+        // Live-location points: keep passing on only the newest one per alert.
+        if (msg.type == MeshMessage.TYPE_STATUS && msg.status != AlertStatus.CANCELLED) {
+            val same = { m: MeshMessage -> m.type == msg.type && m.id == msg.id && m.status == msg.status }
+            if (held.values.any { same(it.msg) && it.msg.sentAt > msg.sentAt }) return
+            held.entries.removeAll { same(it.value.msg) && it.value.msg.sentAt < msg.sentAt }
+        }
         held[msg.key] = Held(msg, System.currentTimeMillis())
         if (hasPermissions(app)) {
             startAdvertising()

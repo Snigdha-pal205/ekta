@@ -181,6 +181,23 @@ private fun ActivePage(
             Spacer(Modifier.height(22.dp))
 
             Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                val loc = state.location
+                val age = loc?.let { now - it.time } ?: Long.MAX_VALUE
+                StatusRow(
+                    when {
+                        !state.gpsOn -> Step.FAILED
+                        loc != null && age <= LiveLocation.FRESH_MS && loc.accuracy <= 30f -> Step.DONE
+                        else -> Step.WORKING
+                    },
+                    "YOUR EXACT LOCATION",
+                    when {
+                        !state.gpsOn -> "Location (GPS) is OFF · turn it on in quick settings!"
+                        loc == null -> "searching GPS… go near a window or outside"
+                        age > LiveLocation.FRESH_MS -> "last known, ${age / 60_000} min old · finding you now…"
+                        loc.accuracy > 30f -> "±${loc.accuracy.toInt()} m · getting more exact…"
+                        else -> "±${loc.accuracy.toInt()} m · live, shared as you move"
+                    },
+                )
                 StatusRow(state.mesh, "BLUETOOTH / WI-FI MESH", state.meshNote)
                 StatusRow(state.upload, if (state.online) "INTERNET" else "INTERNET · OFFLINE", state.uploadNote)
                 StatusRow(

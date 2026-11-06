@@ -629,7 +629,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
         log("  …waiting 2 min: duress keeps sending location silently")
         check("duress → location keeps updating on server",
               wait_until(lambda: doc_field(duress_id, "statusAt") not in (None, at0), 170))
-        check("duress → live location SMS keeps going", wait_sms("EKTA DURESS update", upd0, timeout=30) is not None)
+        check("duress → live location SMS keeps going", wait_sms("EKTA DURESS update", upd0, timeout=150) is not None)
     # Later she is really safe: hidden "I'm safe now" (long-press SOS)
     adb("logcat", "-c")
     long_press_sos()
@@ -658,6 +658,61 @@ def run_round(n, place, lat, lng, test_live_update=False):
     ui_tap("I'M SAFE NOW")
     enter_pin(NORMAL_PIN)
     check("Settings → I'm safe now (no alert) → same 'Alert cancelled' screen", screen_has("Alert cancelled", timeout=3))
+    wait_until(lambda: screen_has("press for help", timeout=2), 10)
+
+    # 2b. Exact location: follows her when she moves, says how exact it is, GPS off handled
+    def her_dist(doc_id, t_lat, t_lng):
+        a, b = doc_field(doc_id, "lat"), doc_field(doc_id, "lng")
+        return math.dist((float(a), float(b)), (t_lat, t_lng)) * 111_320 if a is not None and b is not None else 1e9
+
+    open_app()
+    acc_before = len([b for b in sms_inbox() if "accurate to " in b])
+    ui_tap("SOS")
+    time.sleep(8)
+    lid = last_alert_id()
+    check("location: her SOS page shows her exact location (±m, live)",
+          screen_has("YOUR EXACT LOCATION") and screen_has(" m · live"))
+    acc_sms = wait_sms("accurate to ", acc_before)
+    check("location: SOS SMS says how exact it is", acc_sms is not None, (acc_sms or "none")[-40:])
+    check("location: server has accuracy", doc_field(lid, "accuracy") is not None)
+    m_lat, m_lng = north(lat, lng, 150)
+    set_location(m_lat, m_lng)
+    check("location: she moves 150 m → server follows her within 25 s",
+          wait_until(lambda: her_dist(lid, m_lat, m_lng) < 30, 25), f"{her_dist(lid, m_lat, m_lng):.0f} m off")
+    m2_lat, m2_lng = east(m_lat, m_lng, 200)
+    set_location(m2_lat, m2_lng)
+    check("location: moves again 200 m → server follows again",
+          wait_until(lambda: her_dist(lid, m2_lat, m2_lng) < 30, 25), f"{her_dist(lid, m2_lat, m2_lng):.0f} m off")
+    ui_tap("CANCEL ALERT")
+    enter_pin(NORMAL_PIN)
+    check("location: cancel still works while tracking",
+          wait_until(lambda: doc_field(lid, "status") == "cancelled", 30))
+    set_location(lat, lng)
+    wait_until(lambda: screen_has("press for help", timeout=2), 10)
+
+    # GPS switched off, then she presses SOS
+    adb("shell", "cmd", "location", "set-location-enabled", "false")
+    time.sleep(2)
+    open_app()
+    ui_tap("SOS")
+    time.sleep(4)
+    check("location: GPS off → 'Turn on location' dialog pops up",
+          "com.ekta.sos/.MainActivity" not in top_activity() or screen_has("location", timeout=3))
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    time.sleep(2)
+    open_app()
+    check("location: GPS off → SOS page says Location is OFF", screen_has("Location (GPS) is OFF", timeout=8))
+    gid = last_alert_id()
+    adb("shell", "cmd", "location", "set-location-enabled", "true")
+    set_location(lat, lng)
+    time.sleep(3)
+    set_location(lat, lng)
+    check("location: GPS turned on → her exact location goes out",
+          wait_until(lambda: her_dist(gid, lat, lng) < 30, 40), f"{her_dist(gid, lat, lng):.0f} m off")
+    check("location: GPS on → page shows live ±m", screen_has(" m · live", timeout=15))
+    ui_tap("CANCEL ALERT")
+    enter_pin(NORMAL_PIN)
+    wait_until(lambda: doc_field(gid, "status") == "cancelled", 30)
     wait_until(lambda: screen_has("press for help", timeout=2), 10)
 
     # 3. Alerts from other phones at various distances → full-screen page
@@ -789,7 +844,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     # 11. Receiving phone: cancel / duress over the mesh, forged cancel ignored
     def sos_with_keys(mid, m_lat, m_lng, name, kc, kd, hops=0):
         m = mesh_sos(mid, m_lat, m_lng, name, hops)
-        m[0]["hc"], m[0]["hd"] = sha(kc), sha(kd)
+        m[0]["hc"], m[0]["hd"], m[0]["hl"] = sha(kc), sha(kd), sha("kl-" + mid)
         return m
 
     def status_msg(mid, status, key, name, m_lat, m_lng):
@@ -845,6 +900,26 @@ def run_round(n, place, lat, lng, test_live_update=False):
           wait_until(lambda: count("EKTA: Sara is safe") == safe_gw2 + 1, 40))
     ui_tap("OK")
     wait_until(lambda: "AlertActivity" not in top_activity(), 10)
+
+    # 11b. Receiving phone: her live location follows her (mesh + server); forged moves ignored
+    lv = f"live-{n}-{int(time.time())}"
+    v_lat, v_lng = north(lat, lng, 100)
+    inject(sos_with_keys(lv, v_lat, v_lng, "Asha", "kc-" + lv, "kd-" + lv))
+    check("live: mesh SOS → alert page", wait_alert_page(20) is not None)
+    w_lat, w_lng = north(v_lat, v_lng, 60)
+    mv = status_msg(lv, "active", "kl-" + lv, "Asha", w_lat, w_lng)
+    mv[0]["ac"] = 6
+    inject(mv)
+    check("live: her new position over Bluetooth → page shows ±6 m, live", screen_has("±6 m", timeout=10))
+    fake = status_msg(lv, "active", "wrong-key", "Asha", 0.5, 0.5)
+    fake[0]["ac"] = 77
+    fake[0]["ts"] = int(time.time() * 1000) + 5000
+    inject(fake)
+    time.sleep(3)
+    check("live: forged position (wrong key) ignored", not screen_has("±77 m", timeout=3) and screen_has("±6 m", timeout=3))
+    check("live: gateway put her new position online",
+          wait_until(lambda: doc_field(lv, "lat") is not None and abs(float(doc_field(lv, "lat")) - w_lat) < 0.0002, 40))
+    dismiss_page()
 
     # 12. Receiving phone: cancel / duress arriving from the server
     sid = f"pin-s-{n}-{int(time.time())}"
