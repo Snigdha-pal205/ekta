@@ -31,10 +31,21 @@ import androidx.core.content.ContextCompat
 /** 2 = added Bluetooth mesh (offline SOS). 3 = added cancel / duress PINs. */
 private const val SETUP_VERSION = 4
 
+/** Intent extra: open straight into Settings (used by the gear on the alert page). */
+const val EXTRA_OPEN_SETTINGS = "open_settings"
+
 class MainActivity : ComponentActivity() {
 
     /** Bumped on every resume so the UI re-reads permission state (e.g. after Settings). */
     private var resumeTick by mutableIntStateOf(0)
+
+    /** Bumped when another page (e.g. an alert) asks to open Settings. */
+    private var openSettingsTick by mutableIntStateOf(0)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) openSettingsTick++
+    }
 
     override fun onResume() {
         super.onResume()
@@ -46,6 +57,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val prefs = getSharedPreferences("ekta", MODE_PRIVATE)
 
+        if (intent?.getBooleanExtra(EXTRA_OPEN_SETTINGS, false) == true) openSettingsTick++
         setContent {
             val sos by SosSession.state.collectAsState()
             // Bump SETUP_VERSION whenever setup gains a step, so existing users see it once.
@@ -356,6 +368,15 @@ class MainActivity : ComponentActivity() {
                     onLater = { laterKeys = laterKeys + nextPerm.key },
                 )
             }
+
+            // Gear in the corner of every page: Settings without cancelling the SOS.
+            // (The SOS keeps running; BACK from Settings returns to the SOS page.)
+            LaunchedEffect(openSettingsTick) {
+                if (openSettingsTick > 0) { showDebug = false; safeNowPad = false; showPinPad = false; showSettings = true }
+            }
+            val onMainPage = ready && !showCancelled && !safeNowPad && !showSettings && !showDebug &&
+                !(showPinPad && sos.active && !sos.hidden)
+            if (onMainPage) SettingsGear { showSettings = true }
 
             if (showContactDialog) {
                 ContactDialog(

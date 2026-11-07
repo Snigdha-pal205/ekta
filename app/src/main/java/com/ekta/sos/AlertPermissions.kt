@@ -108,7 +108,7 @@ fun PermissionPopup(
         Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(start = 14.dp, end = 14.dp, top = 66.dp, bottom = 8.dp), // below the settings gear
     ) {
         Column(
             Modifier

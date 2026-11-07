@@ -159,6 +159,14 @@ class AlertActivity : ComponentActivity() {
                     },
                     onDismiss = { done(a.id); finish() },
                 )
+                // Settings from the alert page too (the alarm keeps going until STOP SOUND).
+                SettingsGear {
+                    startActivity(
+                        Intent(this, MainActivity::class.java)
+                            .putExtra(EXTRA_OPEN_SETTINGS, true)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                    )
+                }
             }
         }
     }
