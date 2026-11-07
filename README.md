@@ -14,6 +14,13 @@ During setup she chooses two 4-digit PINs. Only salted hashes are stored on the 
 - **Normal PIN:** shows "Alert cancelled" and stops the alert. Status becomes `cancelled`; a cancel goes out through the Bluetooth mesh and the server, receiving phones stop ringing ("ALERT CANCELLED — she is safe"), and her contact gets "she is safe".
 - **Duress PIN:** shows *exactly* the same "Alert cancelled" screen and returns home, but nothing is actually cancelled. Her phone stays silent (no sound, vibration, notification or SOS screen) and stops its own demo 112 call. It keeps sending her location to the mesh, the server and her contact. Status becomes `duress`; receiving phones show **"DURESS: she was forced to cancel. Do NOT call her phone."**
 
+### Nearby places (Debug panel, demo)
+- When SOS is pressed, Ekta looks up **pharmacies, shops and police booths within 1 km** of her, plus the nearest ones further away if there are fewer than 3 of a type. **Only places with a phone number are listed.**
+- **Settings → DEBUG PANEL** shows each place's name, type, distance and phone number. **DEMO: nobody on the list is ever called or messaged** (numbers are plain text).
+- Free sources, searched at the same time and merged: **TomTom** (most phone numbers; 2,500 free requests/month, no card), **Ola Maps** (100,000 free calls/month) and **OpenStreetMap** (no key). If a source fails or its free limit is reached, the others still work; nothing is ever charged.
+- Keys go **only in `local.properties`** (never committed): `TOMTOM_API_KEY=...` and `OLA_MAPS_API_KEY=...`. Without them, Ekta still works with OpenStreetMap alone.
+- Internal tests (fake servers, no real calls): `python3 tests/places_test.py`.
+
 ### Exact live location
 - On SOS, GPS stays on for the whole alert (Google fused location **and** the phone's raw GPS chip, which needs no internet or signal). Ekta waits for a fresh fix; an old "last known" position is only a fallback and is labelled with its age.
 - Every time she moves (more than ~15 m, or the fix gets much more exact), her new position goes to nearby phones over Bluetooth and to the server, so helpers walk to where she is **now**. The alert page shows **LIVE LOCATION · ±N m · updated Xs ago**, and **SHOW ME WHERE** opens walking directions to her newest position.

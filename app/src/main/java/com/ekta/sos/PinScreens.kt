@@ -247,7 +247,7 @@ private fun PinField(label: String, value: String, onChange: (String) -> Unit) {
 
 /** Settings. "I'm safe now" looks and behaves the same whether or not an alert is running. */
 @Composable
-fun SettingsScreen(onContact: () -> Unit, onSafeNow: () -> Unit, onBack: () -> Unit) {
+fun SettingsScreen(onContact: () -> Unit, onSafeNow: () -> Unit, onDebug: () -> Unit, onBack: () -> Unit) {
     IllustratedBackground {
         Column(
             Modifier
@@ -262,6 +262,8 @@ fun SettingsScreen(onContact: () -> Unit, onSafeNow: () -> Unit, onBack: () -> U
             SettingsItem("EMERGENCY CONTACT", "change who gets your live location", onContact)
             Spacer(Modifier.height(14.dp))
             SettingsItem("I'M SAFE NOW", "end an alert with your PIN", onSafeNow)
+            Spacer(Modifier.height(14.dp))
+            SettingsItem("DEBUG PANEL", "nearby pharmacies, shops, police (demo)", onDebug)
             Spacer(Modifier.height(30.dp))
             Text(
                 "BACK",

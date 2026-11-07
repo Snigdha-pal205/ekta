@@ -19,6 +19,7 @@ import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -135,11 +136,21 @@ class AlertListenerService : Service() {
         val cells = cellsAround(location.latitude, location.longitude)
         if (cells == watchedCells) return
         watchedCells = cells
+        listen(cells)
+    }
+
+    /** Live server listener for these cells. If it ever breaks, start it again. */
+    private fun listen(cells: List<String>) {
         registration?.remove()
         registration = FirebaseFirestore.getInstance()
             .collection(SosRepository.COLLECTION)
             .whereIn("cell", cells)
-            .addSnapshotListener { snap, _ ->
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    // A failed listener is dead for good: re-attach after a short pause.
+                    handler.postDelayed({ if (watchedCells == cells) listen(cells) }, 5_000)
+                    return@addSnapshotListener
+                }
                 snap?.documentChanges?.forEach { onAlertDoc(it) }
             }
     }
@@ -239,17 +250,43 @@ class AlertListenerService : Service() {
         val known = lastLocation
         val fresh = known != null &&
             System.currentTimeMillis() - known.time < FRESH_LOCATION_MS
-        if (fresh) {
-            checkDistance(known!!, lat, lng, id)
-        } else {
-            // Our position is old or unknown: get a precise fix before deciding.
-            fused.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-                .addOnSuccessListener { loc ->
-                    val me = loc ?: known ?: return@addOnSuccessListener
-                    lastLocation = me
-                    checkDistance(me, lat, lng, id)
-                }
+        // Ring at once if what we know says she's in range (never wait for GPS first).
+        if (known != null && withinRange(known, lat, lng)) {
+            checkDistance(known, lat, lng, id)
+            return
         }
+        if (fresh) return // a fresh position says she's really too far away
+
+        // Our position is old/unknown and says "out of range" (or nothing): get a fresh
+        // fix, but never wait more than 10 s, and never drop the alert because of it.
+        var decided = false
+        fun decide(loc: Location?) {
+            if (decided) return
+            decided = true
+            val me = loc ?: known
+            if (loc != null) lastLocation = loc
+            if (me != null) checkDistance(me, lat, lng, id)
+            else showSosNotification(lat, lng, -1f, id) // no position at all: better to alert
+        }
+        try {
+            fused.getCurrentLocation(
+                CurrentLocationRequest.Builder()
+                    .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+                    .setDurationMillis(10_000)
+                    .setMaxUpdateAgeMillis(30_000)
+                    .build(),
+                null,
+            ).addOnCompleteListener { t -> decide(if (t.isSuccessful) t.result else null) }
+        } catch (_: Exception) {
+            decide(null)
+        }
+        handler.postDelayed({ decide(null) }, 12_000)
+    }
+
+    private fun withinRange(me: Location, lat: Double, lng: Double): Boolean {
+        val r = FloatArray(1)
+        Location.distanceBetween(me.latitude, me.longitude, lat, lng, r)
+        return r[0] <= ALERT_RADIUS_METERS
     }
 
     private fun checkDistance(me: Location, lat: Double, lng: Double, id: String, hops: Int = -1) {
@@ -303,7 +340,11 @@ class AlertListenerService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         if (duress) nm.cancel(id.hashCode()) // the duress warning replaces the plain alert
 
-        val page = AlertActivity.intent(this, lat, lng, distance, id, hops)
+        // How unsure the distance is: both positions can be off (indoors often ±100 m).
+        val herAcc = AlertStatus.infos.value[id]?.accuracy ?: 0.0
+        val myAcc = lastLocation?.accuracy?.toDouble() ?: 0.0
+        val veryClose = distance >= 0 && distance <= maxOf(Math.hypot(herAcc, myAcc), 20.0)
+        val page = AlertActivity.intent(this, lat, lng, distance, id, hops, myAcc.toFloat())
         val fullScreen = PendingIntent.getActivity(
             this, notifyId, page,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
@@ -325,6 +366,7 @@ class AlertListenerService : Service() {
             .setContentText(
                 when {
                     duress -> "Her alert is still active. Tap to see where she is."
+                    veryClose -> "Someone very close to you needs help. Tap to see where."
                     distance >= 0 -> "Someone ${distance.toInt()} m from you needs help. Tap to see where."
                     else -> "Someone near you needs help. Tap to see where."
                 },

@@ -1,6 +1,17 @@
 package com.ekta.sos
 
 import android.app.NotificationManager
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.pm.PackageManager
+import android.location.Location
+import android.os.Looper
+import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -55,6 +66,43 @@ class AlertActivity : ComponentActivity() {
 
     private var alert by mutableStateOf<Alert?>(null)
 
+    /** This phone's own live position while the alert is open (GPS on, high accuracy). */
+    private var myLoc by mutableStateOf<Location?>(null)
+    private var myAccAtAlert = -1f
+    private var locCallback: LocationCallback? = null
+
+    override fun onStart() {
+        super.onStart()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) return
+        val cb = object : LocationCallback() {
+            override fun onLocationResult(r: LocationResult) {
+                val l = r.lastLocation ?: return
+                val cur = myLoc
+                // keep the newer fix unless it is much worse
+                if (cur == null || l.accuracy <= cur.accuracy + 10f || l.time - cur.time > 20_000) myLoc = l
+            }
+        }
+        try {
+            @SuppressLint("MissingPermission")
+            val t = LocationServices.getFusedLocationProviderClient(this).requestLocationUpdates(
+                LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2_000).setMinUpdateIntervalMillis(1_000).build(),
+                cb, Looper.getMainLooper(),
+            )
+            locCallback = cb
+        } catch (_: Exception) {
+        }
+    }
+
+    override fun onStop() {
+        locCallback?.let {
+            try { LocationServices.getFusedLocationProviderClient(this).removeLocationUpdates(it) } catch (_: Exception) {}
+        }
+        locCallback = null
+        super.onStop()
+    }
+
     data class Alert(
         val lat: Double, val lng: Double, val distance: Int, val id: String, val at: Long,
         val hops: Int, // -1 = came over the internet, else Bluetooth / Wi-Fi hops
@@ -71,8 +119,20 @@ class AlertActivity : ComponentActivity() {
             alert?.let { a ->
                 val info = infos[a.id]
                 val status = info?.status ?: AlertStatus.ACTIVE
+                // Live distance: her newest position vs. this phone's newest position.
+                val herLat = info?.lat ?: a.lat
+                val herLng = info?.lng ?: a.lng
+                val me = myLoc
+                val dist = if (me != null) {
+                    val r = FloatArray(1)
+                    Location.distanceBetween(me.latitude, me.longitude, herLat, herLng, r)
+                    r[0].toInt()
+                } else a.distance
+                val myAcc = (me?.accuracy ?: myAccAtAlert).toDouble().coerceAtLeast(0.0)
+                val unsure = Math.hypot(info?.accuracy ?: 0.0, myAcc)
                 AlertScreen(
-                    alert = a.copy(lat = info?.lat ?: a.lat, lng = info?.lng ?: a.lng),
+                    alert = a.copy(lat = herLat, lng = herLng, distance = dist),
+                    uncertainty = unsure,
                     accuracy = info?.accuracy,
                     locationAt = info?.updatedAt ?: 0L,
                     status = status,
@@ -127,6 +187,7 @@ class AlertActivity : ComponentActivity() {
             at = System.currentTimeMillis(),
             hops = intent.getIntExtra(EXTRA_HOPS, -1),
         )
+        myAccAtAlert = intent.getFloatExtra(EXTRA_MY_ACC, -1f)
         // Opening the page (tapping the notification, or it popping up) never silences
         // the alarm: it keeps ringing until she presses STOP SOUND / a button here.
     }
@@ -151,9 +212,11 @@ class AlertActivity : ComponentActivity() {
         private const val EXTRA_DISTANCE = "distance"
         private const val EXTRA_ID = "id"
         private const val EXTRA_HOPS = "hops"
+        private const val EXTRA_MY_ACC = "my_acc"
 
         fun intent(
             context: Context, lat: Double, lng: Double, distance: Float, id: String, hops: Int = -1,
+            myAccuracy: Float = -1f,
         ) =
             Intent(context, AlertActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -162,6 +225,7 @@ class AlertActivity : ComponentActivity() {
                 .putExtra(EXTRA_DISTANCE, distance)
                 .putExtra(EXTRA_ID, id)
                 .putExtra(EXTRA_HOPS, hops)
+                .putExtra(EXTRA_MY_ACC, myAccuracy)
     }
 }
 
@@ -170,6 +234,7 @@ private val AlertPink = Color(0xFFF06A9E)
 @Composable
 private fun AlertScreen(
     alert: AlertActivity.Alert,
+    uncertainty: Double,
     accuracy: Double?,
     locationAt: Long,
     status: String,
@@ -261,9 +326,20 @@ private fun AlertScreen(
                     .background(Ink)
                     .padding(horizontal = 18.dp, vertical = 10.dp),
             ) {
+                // Two rough positions can't give an exact gap: if the gap is smaller than
+                // how unsure they are, say "VERY CLOSE" instead of a misleading number.
+                val close = alert.distance < 0 || alert.distance <= maxOf(uncertainty, 20.0)
                 Text(
-                    if (alert.distance >= 0) "${alert.distance} m away" else "very close",
+                    if (close) "VERY CLOSE" else "${alert.distance} m away",
                     fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Lime,
+                )
+            }
+            if (alert.distance >= 0 && alert.distance <= maxOf(uncertainty, 20.0) && uncertainty > 20.0) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "within ~${(Math.ceil(uncertainty / 10.0) * 10).toInt()} m · look around you",
+                    fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
+                    textAlign = TextAlign.Center,
                 )
             }
             Spacer(Modifier.height(10.dp))

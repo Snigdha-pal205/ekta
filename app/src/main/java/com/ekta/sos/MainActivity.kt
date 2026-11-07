@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
             var showPinPad by remember { mutableStateOf(false) }
             var safeNowPad by remember { mutableStateOf(false) } // hidden "I'm safe now" pad
             var showSettings by remember { mutableStateOf(false) }
+            var showDebug by remember { mutableStateOf(false) }
             var pinMessage by remember { mutableStateOf<String?>(null) }
             var showCancelled by remember { mutableStateOf(false) }
             var laterKeys by remember { mutableStateOf(setOf<String>()) } // pop-ups she put off this time
@@ -278,11 +279,15 @@ class MainActivity : ComponentActivity() {
                     },
                     onBack = { safeNowPad = false; pinMessage = null },
                 )
+            } else if (showDebug) {
+                androidx.activity.compose.BackHandler { showDebug = false }
+                DebugPanelScreen(onBack = { showDebug = false })
             } else if (showSettings) {
                 androidx.activity.compose.BackHandler { showSettings = false }
                 SettingsScreen(
                     onContact = { picked = null; showContactDialog = true },
                     onSafeNow = { pinMessage = null; safeNowPad = true },
+                    onDebug = { showDebug = true },
                     onBack = { showSettings = false },
                 )
             } else if (showPinPad && sos.active && !sos.hidden) {
@@ -332,7 +337,7 @@ class MainActivity : ComponentActivity() {
             }
             val nextPerm = missingPerms.firstOrNull()
             if (ready && nextPerm != null && !showContactDialog && !showPinSetup && !sos.active && !showCancelled &&
-                !showSettings && !safeNowPad && !showPinPad
+                !showSettings && !safeNowPad && !showPinPad && !showDebug
             ) {
                 PermissionPopup(
                     item = nextPerm,

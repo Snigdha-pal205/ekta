@@ -1,7 +1,22 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// Google Places API key for the "nearby places" debug list. Put
+//   PLACES_API_KEY=your-key
+// in local.properties (never committed). It can also be pasted in Settings → Debug panel.
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val placesApiKey: String = localProps.getProperty("PLACES_API_KEY") ?: System.getenv("PLACES_API_KEY") ?: ""
+// Free Ola Maps key (100,000 calls/month), also only in local.properties: OLA_MAPS_API_KEY=...
+val olaMapsApiKey: String = localProps.getProperty("OLA_MAPS_API_KEY") ?: System.getenv("OLA_MAPS_API_KEY") ?: ""
+// Free TomTom key (2,500 requests/month, no card), also only in local.properties: TOMTOM_API_KEY=...
+val tomTomApiKey: String = localProps.getProperty("TOMTOM_API_KEY") ?: System.getenv("TOMTOM_API_KEY") ?: ""
 
 // Only apply Google Services once you've dropped in app/google-services.json
 if (file("google-services.json").exists()) {
@@ -18,9 +33,15 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "PLACES_API_KEY", "\"${placesApiKey}\"")
+        buildConfigField("String", "OLA_MAPS_API_KEY", "\"${olaMapsApiKey}\"")
+        buildConfigField("String", "TOMTOM_API_KEY", "\"${tomTomApiKey}\"")
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
