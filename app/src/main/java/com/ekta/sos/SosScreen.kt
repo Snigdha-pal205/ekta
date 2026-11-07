@@ -26,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -205,7 +206,11 @@ private fun ActivePage(
                     "SMS → ${contact?.name?.uppercase() ?: "EMERGENCY CONTACT"}",
                     state.contactNote,
                 )
-                StatusRow(Step.DEMO, "SMS → WOMEN'S COMMITTEE", "DEMO · not actually sent")
+                val women by WomenHelp.state.collectAsState()
+                StatusRow(
+                    Step.DEMO, "SMS → WOMEN'S COMMITTEE",
+                    "DEMO · not actually sent · would go to ${women.total} numbers (see Settings)",
+                )
             }
             if (state.committeeMessage.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))

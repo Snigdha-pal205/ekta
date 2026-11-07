@@ -74,6 +74,7 @@ class MainActivity : ComponentActivity() {
             var safeNowPad by remember { mutableStateOf(false) } // hidden "I'm safe now" pad
             var showSettings by remember { mutableStateOf(false) }
             var showDebug by remember { mutableStateOf(false) }
+            var showWomen by remember { mutableStateOf(false) }
             var pinMessage by remember { mutableStateOf<String?>(null) }
             var showCancelled by remember { mutableStateOf(false) }
             var laterKeys by remember { mutableStateOf(setOf<String>()) } // pop-ups she put off this time
@@ -291,6 +292,9 @@ class MainActivity : ComponentActivity() {
                     },
                     onBack = { safeNowPad = false; pinMessage = null },
                 )
+            } else if (showWomen) {
+                androidx.activity.compose.BackHandler { showWomen = false }
+                WomenCommitteeScreen(onBack = { showWomen = false })
             } else if (showDebug) {
                 androidx.activity.compose.BackHandler { showDebug = false }
                 DebugPanelScreen(onBack = { showDebug = false })
@@ -300,6 +304,7 @@ class MainActivity : ComponentActivity() {
                     onContact = { picked = null; showContactDialog = true },
                     onSafeNow = { pinMessage = null; safeNowPad = true },
                     onDebug = { showDebug = true },
+                    onWomen = { showWomen = true },
                     onBack = { showSettings = false },
                 )
             } else if (showPinPad && sos.active && !sos.hidden) {
@@ -349,7 +354,7 @@ class MainActivity : ComponentActivity() {
             }
             val nextPerm = missingPerms.firstOrNull()
             if (ready && nextPerm != null && !showContactDialog && !showPinSetup && !sos.active && !showCancelled &&
-                !showSettings && !safeNowPad && !showPinPad && !showDebug
+                !showSettings && !safeNowPad && !showPinPad && !showDebug && !showWomen
             ) {
                 PermissionPopup(
                     item = nextPerm,
@@ -372,9 +377,9 @@ class MainActivity : ComponentActivity() {
             // Gear in the corner of every page: Settings without cancelling the SOS.
             // (The SOS keeps running; BACK from Settings returns to the SOS page.)
             LaunchedEffect(openSettingsTick) {
-                if (openSettingsTick > 0) { showDebug = false; safeNowPad = false; showPinPad = false; showSettings = true }
+                if (openSettingsTick > 0) { showDebug = false; showWomen = false; safeNowPad = false; showPinPad = false; showSettings = true }
             }
-            val onMainPage = ready && !showCancelled && !safeNowPad && !showSettings && !showDebug &&
+            val onMainPage = ready && !showCancelled && !safeNowPad && !showSettings && !showDebug && !showWomen &&
                 !(showPinPad && sos.active && !sos.hidden)
             if (onMainPage) SettingsGear { showSettings = true }
 

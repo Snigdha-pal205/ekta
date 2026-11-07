@@ -18,5 +18,6 @@ class DebugPlacesReceiver : BroadcastReceiver() {
         if (intent.hasExtra("osm_urls")) NearbyPlaces.setTestOsmUrls(context, intent.getStringExtra("osm_urls"))
         if (intent.hasExtra("ola_url")) NearbyPlaces.setTestOlaUrl(context, intent.getStringExtra("ola_url"))
         if (intent.hasExtra("tomtom_url")) NearbyPlaces.setTestTomTomUrl(context, intent.getStringExtra("tomtom_url"))
+        if (intent.hasExtra("women_tomtom_url")) WomenHelp.setTestTomTomUrl(context, intent.getStringExtra("women_tomtom_url"))
     }
 }

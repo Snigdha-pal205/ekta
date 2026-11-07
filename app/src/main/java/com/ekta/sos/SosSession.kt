@@ -197,6 +197,8 @@ object SosSession {
             // Nearby pharmacies / shops / police booths within 500 m (Google Places).
             // DEMO: only listed in Settings → Debug panel; nobody is called or messaged.
             NearbyPlaces.search(app, id, loc.latitude, loc.longitude)
+            // Women's committee contacts (DEMO: listed in Settings → WOMEN COMMITTEE, never contacted).
+            WomenHelp.search(app, id, loc.latitude, loc.longitude)
 
             // 3. Live location: every move goes to nearby phones (mesh + server).
             startTracking(app, id, sentLoc = loc, contact = contact)

@@ -14,6 +14,11 @@ During setup she chooses two 4-digit PINs. Only salted hashes are stored on the 
 - **Normal PIN:** shows "Alert cancelled" and stops the alert. Status becomes `cancelled`; a cancel goes out through the Bluetooth mesh and the server, receiving phones stop ringing ("ALERT CANCELLED — she is safe"), and her contact gets "she is safe".
 - **Duress PIN:** shows *exactly* the same "Alert cancelled" screen and returns home, but nothing is actually cancelled. Her phone stays silent (no sound, vibration, notification or SOS screen) and stops its own demo 112 call. It keeps sending her location to the mesh, the server and her contact. Status becomes `duress`; receiving phones show **"DURESS: she was forced to cancel. Do NOT call her phone."**
 
+### Women committee (Settings, demo)
+- **Settings → WOMEN COMMITTEE** lists who the women's committee SMS would go to on SOS: the women's helplines **181**, **1091** and the **National Commission for Women (7827170170)**, plus nearby women's offices (women's commission, women cell, One Stop Centre, women's NGOs, within 15 km) that have a phone number (from TomTom, free).
+- It searches automatically when SOS is pressed; the SOS page shows how many numbers it would go to. **DEMO: nobody is ever called or messaged.**
+- Helpline numbers come from public sources; confirm them on ncw.nic.in before any real use.
+
 ### Nearby places (Debug panel, demo)
 - When SOS is pressed, Ekta looks up **pharmacies, shops and police booths within 1 km** of her, plus the nearest ones further away if there are fewer than 3 of a type. **Only places with a phone number are listed.**
 - **Settings → DEBUG PANEL** shows each place's name, type, distance and phone number. **DEMO: nobody on the list is ever called or messaged** (numbers are plain text).
