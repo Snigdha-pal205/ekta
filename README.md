@@ -25,7 +25,9 @@ When a woman feels unsafe, the people who can help fastest are the ones already 
 
 Ekta turns every phone with the app into a neighbour who can respond. Pressing SOS rings every Ekta phone within 500 m with a full-screen alarm, even on the lock screen, and keeps sending her exact live location as she moves. If there's no internet or signal, the alert hops phone-to-phone over Bluetooth until one phone can get it online. If someone forces her to cancel, a secret **duress PIN** makes her screen look cancelled while help keeps coming.
 
-Built for a hackathon: calling **112** and messaging the **women's committee** are shown as **demos**. Nothing is dialled and no committee is messaged.
+Built for a hackathon: calling **112** is shown as a **demo**. Nothing is dialled.
+
+**11 languages:** English, हिन्दी, বাংলা, తెలుగు, मराठी, தமிழ், ગુજરાતી, ಕನ್ನಡ, മലയാളം, ਪੰਜਾਬੀ and ଓଡ଼ିଆ. Pick one in **Settings → Language**; every screen, alert, notification and the **SMS to her emergency contact** switch to it (a nearby phone relaying her SMS offline uses her language too).
 
 ## What happens when she presses SOS
 
@@ -36,8 +38,7 @@ Built for a hackathon: calling **112** and messaging the **women's committee** a
 | Her **exact live location** keeps updating on helpers' phones as she moves; **SHOW ME WHERE** opens walking directions to her | **Real** |
 | **No internet or signal:** the alert travels over **Bluetooth / Wi-Fi Direct**, hop by hop, until a phone with internet uploads it and texts her contact from its own SIM | **Real** |
 | **112** is called | **Demo:** an on-screen call card, no call is placed |
-| SMS to the **women's committee** (helplines + nearby women's offices) | **Demo:** listed in Settings, never sent |
-| Nearby **pharmacies, shops and police booths** with phone numbers are found | **Demo:** listed in the Debug panel, nobody is contacted |
+| Nearby **pharmacies, shops and police booths** with phone numbers (within 1 km) get a recorded voice call and an SMS: *"A woman near you needs help. Location: [nearest landmark]. Please help or call 112."* | **Demo:** shown as "called" in a drop-down on the SOS page; nobody is called or texted |
 
 **Cancelling needs a PIN.** Her normal PIN really cancels and tells everyone she's safe. Her **duress PIN** shows the same "Alert cancelled" screen, but the alert keeps running silently and helpers see **"DURESS: she was forced to cancel. Do NOT call her phone."** Later, **"I'm safe now"** (long-press SOS, or Settings) ends it for real.
 
@@ -45,13 +46,27 @@ Built for a hackathon: calling **112** and messaging the **women's committee** a
 
 | Home | Settings (⚙ on every page) |
 | --- | --- |
-| ![Ekta home screen with the SOS button](docs/screenshots/home.png) | ![Settings: emergency contact, I'm safe now, women committee, debug panel](docs/screenshots/settings.png) |
-| **One button.** The ⚙ in the corner opens Settings from any page, even during an SOS. | **Everything else** lives here, so the main screen stays simple. |
+| ![Ekta home screen with the SOS button and Know your destination](docs/screenshots/home.png) | ![Settings: emergency contact, I'm safe now](docs/screenshots/settings.png) |
+| **One button**, plus **Know your destination** below it. The ⚙ in the corner opens Settings from any page, even during an SOS. | **Everything else** lives here, so the main screen stays simple. |
 
-| Women committee (demo) | Nearby places (demo) |
+| Nearby places called (demo) |
+| --- |
+| ![SOS page drop-down: called 42 nearby places, the recorded message, and each place with its phone number](docs/screenshots/nearby-calls.png) |
+| Tap the box under the 112 card: the message they'd hear and every pharmacy, shop and police booth **with a phone number**, nearest first. |
+
+## Safe Score: know your destination
+
+Tap **KNOW YOUR DESTINATION**, search a place, and pick an hour. Ekta gives a score from 0 to 10 (10 = safest) built from five factors, each shown with a colour, a short reason and its own score:
+
+| Factor | How it's worked out |
 | --- | --- |
-| ![Women committee: helplines 181, 1091 and National Commission for Women](docs/screenshots/women-committee.png) | ![Debug panel: 40 nearby places with phone numbers within 1 km](docs/screenshots/nearby-places.png) |
-| Women's helplines and nearby women's offices the committee SMS would go to. | Pharmacies, shops and police booths **with phone numbers**, nearest first, from free map data. |
+| Past incidents | Reports near the place at that time of day (**sample data** for the demo) |
+| People around | Shops and places open within 300 m at that hour |
+| Transport | Bus stops, metro and taxi stands within 500 m that run at that hour |
+| Police | Distance to the nearest police station |
+| Community | Star ratings from other Ekta users for that time of day |
+
+8+ is **Safe**, 6+ **Fairly safe**, 4+ **Be careful**, below 4 **Unsafe**. **SHARE JOURNEY** sends the place and score to anyone, and you can rate the place yourself.
 
 Screenshots are from the Android emulator placed at Connaught Place, New Delhi, with test data.
 
@@ -62,7 +77,9 @@ Screenshots are from the Android emulator placed at Connaught Place, New Delhi, 
 3. **Walk around** with the SOS phone; the helper's distance and map follow her. Tap **SHOW ME WHERE**.
 4. **Cancel with the duress PIN.** Her screen says "Alert cancelled"; the helper's phone switches to **DURESS**. Long-press SOS and enter the normal PIN to end it for real.
 5. **Go offline.** Put the SOS phone in airplane mode with Bluetooth on, keep the phones within a few metres, and press SOS. The alert still arrives.
-6. **Open Settings** (⚙) to see the **Women committee** and **Debug panel** lists.
+6. **During an SOS**, tap the **Called … nearby places** box to see who would be called and what they'd hear.
+7. **Tap KNOW YOUR DESTINATION** on the home page, search a place and pick an hour to see its Safe Score.
+8. **Change the language** in Settings → Language (the item always says LANGUAGE in English too).
 
 **Tip:** for practice, set the emergency contact to your own second number. Keep Location (GPS) on and stand near a window for exact positions.
 
@@ -79,14 +96,14 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 **Firebase:** put `google-services.json` for an Android app named `com.ekta.sos` in `app/` (not committed; it holds the project's API key). Create a Firestore database and publish the rules with `firebase deploy --only firestore:rules`.
 
-**Optional free map keys** (for the Women committee and Debug panel lists). Add them to `local.properties`, which is never committed:
+**Free map keys** (TomTom is needed for Safe Score; both help find nearby places on SOS). Add them to `local.properties`, which is never committed:
 
 ```properties
 TOMTOM_API_KEY=...      # free, no card: 2,500 requests a month (my.tomtom.com)
 OLA_MAPS_API_KEY=...    # free: 100,000 calls a month
 ```
 
-Without them, Ekta still works and uses OpenStreetMap alone. Over a free limit, requests are refused, never charged.
+Without them, SOS still works and nearby places come from OpenStreetMap alone. Over a free limit, requests are refused, never charged.
 
 ## How it works
 
@@ -109,8 +126,9 @@ flowchart LR
 | `AlertListenerService` | Always-on listener: alerts from the server, push and mesh; 500 m check; full-screen alarm. |
 | `MeshManager`, `Gateway` | Offline Bluetooth / Wi-Fi Direct mesh; the first phone with internet uploads and texts her contact. |
 | `AlertActivity`, `AlarmPlayer` | The helper's alert page, live distance, and the looping alarm. |
-| `NearbyPlaces`, `TomTomPlaces`, `OlaPlaces`, `OsmPlaces` | Demo lookup of nearby places with phone numbers (Debug panel). |
-| `WomenHelp` | Demo women's committee list: helplines and nearby women's offices. |
+| `NearbyPlaces`, `TomTomPlaces`, `OlaPlaces`, `OsmPlaces` | Lookup of nearby places with phone numbers when SOS is pressed. |
+| `NearbyAlert` | What those places are told. `REAL_MODE = false` (demo); set it to `true` to really text the 10 nearest mobile numbers. |
+| `safescore/` | Safe Score page: TomTom search and map, five factor files, and `SafeScoreEngine` that combines them. |
 | `firestore.rules` | Who may cancel, report duress or move a location (checked with secret-key hashes). |
 
 ### Rules that keep an SOS trustworthy
@@ -126,7 +144,6 @@ flowchart LR
 | Command | What it checks |
 | --- | --- |
 | `python3 tests/e2e.py 1` | Full end-to-end round on an emulator: setup, SOS, SMS, live location, PINs and duress, distances, lock screen, offline mesh, gateway, push, restart. |
-| `python3 tests/places_test.py` | Nearby places with fake TomTom / Ola / OpenStreetMap servers: requests, list, errors, retries, offline, no calls or messages. |
 | `python3 tests/rules_location.py` | Firestore rules for live-location updates. |
 | `./test-alert.sh <lat> <lng>` | Sends a fake SOS from that spot; phones within 500 m should ring. |
 
@@ -138,4 +155,4 @@ flowchart LR
 - Free map data doesn't have every shop or office; the lists show only places that have a phone number.
 - There's no sign-in yet, so anyone with the Firebase config can read alerts; add Firebase Auth before a real launch. Revealed duress/location keys could be reused to post fake location points (not to cancel).
 - `SEND_SMS` works for direct installs; the Play Store allows it only for certain app types.
-- Helpline numbers come from public sources; confirm them (for example on ncw.nic.in) before any real use.
+- Safe Score's past-incident data is **sample data** for the demo; real use needs a real incident source.

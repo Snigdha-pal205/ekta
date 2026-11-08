@@ -1,5 +1,8 @@
 package com.ekta.sos
 
+import android.content.Context
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationManager
@@ -47,6 +50,8 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) openSettingsTick++
     }
 
+    override fun attachBaseContext(base: Context) = super.attachBaseContext(Lang.wrap(base))
+
     override fun onResume() {
         super.onResume()
         resumeTick++
@@ -72,9 +77,9 @@ class MainActivity : ComponentActivity() {
             var showPinSetup by remember { mutableStateOf(false) }
             var showPinPad by remember { mutableStateOf(false) }
             var safeNowPad by remember { mutableStateOf(false) } // hidden "I'm safe now" pad
-            var showSettings by remember { mutableStateOf(false) }
-            var showDebug by remember { mutableStateOf(false) }
-            var showWomen by remember { mutableStateOf(false) }
+            // Settings / language stay open when the page is redrawn in a new language.
+            var showSettings by rememberSaveable { mutableStateOf(false) }
+            var showLanguage by rememberSaveable { mutableStateOf(false) }
             var pinMessage by remember { mutableStateOf<String?>(null) }
             var showCancelled by remember { mutableStateOf(false) }
             var laterKeys by remember { mutableStateOf(setOf<String>()) } // pop-ups she put off this time
@@ -121,7 +126,7 @@ class MainActivity : ComponentActivity() {
             fun askAutostart() {
                 if (XiaomiPopups.autostartAllowed(this)) return askBluetooth()
                 Toast.makeText(
-                    this, "Xiaomi: turn on Autostart for Ekta so alerts still reach you after a restart",
+                    this, getString(R.string.toast_autostart),
                     Toast.LENGTH_LONG,
                 ).show()
                 for (i in XiaomiPopups.autostartIntents(this)) {
@@ -144,8 +149,7 @@ class MainActivity : ComponentActivity() {
                 if (XiaomiPopups.allowed(this)) return askAutostart()
                 Toast.makeText(
                     this,
-                    "Xiaomi: turn on \"Display pop-up windows while running in the background\" " +
-                        "and \"Show on lock screen\" so alerts fill your screen",
+                    getString(R.string.toast_xiaomi_popups),
                     Toast.LENGTH_LONG,
                 ).show()
                 for (i in XiaomiPopups.settingsIntents(this)) {
@@ -220,8 +224,7 @@ class MainActivity : ComponentActivity() {
                     AlertListenerService.start(this)
                     askBackground()
                 } else {
-                    setupMessage = "Ekta needs your location to know who is within " +
-                        "${ALERT_RADIUS_METERS.toInt()} m. Tap the button and choose \"While using the app\"."
+                    setupMessage = getString(R.string.setup_need_location, ALERT_RADIUS_METERS.toInt())
                 }
             }
 
@@ -276,12 +279,12 @@ class MainActivity : ComponentActivity() {
                 // so nobody watching can tell.
                 androidx.activity.compose.BackHandler { safeNowPad = false; pinMessage = null }
                 PinPadScreen(
-                    title = "I'M SAFE NOW",
-                    backLabel = "BACK",
+                    title = stringResource(R.string.safe_now),
+                    backLabel = stringResource(R.string.back),
                     message = pinMessage,
                     onSubmit = { pin ->
                         when (SosSession.cancelWithPin(this, pin)) {
-                            PinStore.Result.WRONG -> pinMessage = "Wrong PIN, try again"
+                            PinStore.Result.WRONG -> pinMessage = getString(R.string.pin_wrong)
                             else -> {
                                 pinMessage = null
                                 safeNowPad = false
@@ -292,19 +295,19 @@ class MainActivity : ComponentActivity() {
                     },
                     onBack = { safeNowPad = false; pinMessage = null },
                 )
-            } else if (showWomen) {
-                androidx.activity.compose.BackHandler { showWomen = false }
-                WomenCommitteeScreen(onBack = { showWomen = false })
-            } else if (showDebug) {
-                androidx.activity.compose.BackHandler { showDebug = false }
-                DebugPanelScreen(onBack = { showDebug = false })
+            } else if (showLanguage) {
+                androidx.activity.compose.BackHandler { showLanguage = false }
+                LanguageScreen(
+                    current = Lang.current(this),
+                    onPick = { tag -> showLanguage = false; if (tag != Lang.current(this)) Lang.set(this, tag) },
+                    onBack = { showLanguage = false },
+                )
             } else if (showSettings) {
                 androidx.activity.compose.BackHandler { showSettings = false }
                 SettingsScreen(
                     onContact = { picked = null; showContactDialog = true },
                     onSafeNow = { pinMessage = null; safeNowPad = true },
-                    onDebug = { showDebug = true },
-                    onWomen = { showWomen = true },
+                    onLanguage = { showLanguage = true },
                     onBack = { showSettings = false },
                 )
             } else if (showPinPad && sos.active && !sos.hidden) {
@@ -313,7 +316,7 @@ class MainActivity : ComponentActivity() {
                     message = pinMessage,
                     onSubmit = { pin ->
                         when (SosSession.cancelWithPin(this, pin)) {
-                            PinStore.Result.WRONG -> pinMessage = "Wrong PIN, try again"
+                            PinStore.Result.WRONG -> pinMessage = getString(R.string.pin_wrong)
                             else -> {
                                 pinMessage = null
                                 showPinPad = false
@@ -344,6 +347,7 @@ class MainActivity : ComponentActivity() {
                     onEditContact = { picked = null; showContactDialog = true },
                     onSafeNow = { pinMessage = null; safeNowPad = true },
                     onSettings = { showSettings = true },
+                    onDestination = { startActivity(Intent(this, com.ekta.sos.safescore.SafeScoreActivity::class.java)) },
                 )
             }
 
@@ -354,11 +358,15 @@ class MainActivity : ComponentActivity() {
             }
             val nextPerm = missingPerms.firstOrNull()
             if (ready && nextPerm != null && !showContactDialog && !showPinSetup && !sos.active && !showCancelled &&
-                !showSettings && !safeNowPad && !showPinPad && !showDebug && !showWomen
+                !showSettings && !safeNowPad && !showPinPad
             ) {
+                // How many were missing when this round started, so it reads "step 2 of 4".
+                val total = remember(laterKeys) { mutableIntStateOf(0) }
+                if (missingPerms.size > total.intValue) total.intValue = missingPerms.size
                 PermissionPopup(
                     item = nextPerm,
-                    remaining = missingPerms.size,
+                    done = total.intValue - missingPerms.size,
+                    total = total.intValue,
                     onOpenSettings = {
                         val opened = nextPerm.intents(this).any { i ->
                             try {
@@ -368,6 +376,8 @@ class MainActivity : ComponentActivity() {
                                 false
                             }
                         }
+                        // A reminder that stays visible on top of the settings page.
+                        if (opened) android.widget.Toast.makeText(this, nextPerm.hint, android.widget.Toast.LENGTH_LONG).show()
                         if (!opened) laterKeys = laterKeys + nextPerm.key
                     },
                     onLater = { laterKeys = laterKeys + nextPerm.key },
@@ -377,9 +387,9 @@ class MainActivity : ComponentActivity() {
             // Gear in the corner of every page: Settings without cancelling the SOS.
             // (The SOS keeps running; BACK from Settings returns to the SOS page.)
             LaunchedEffect(openSettingsTick) {
-                if (openSettingsTick > 0) { showDebug = false; showWomen = false; safeNowPad = false; showPinPad = false; showSettings = true }
+                if (openSettingsTick > 0) { safeNowPad = false; showPinPad = false; showSettings = true }
             }
-            val onMainPage = ready && !showCancelled && !safeNowPad && !showSettings && !showDebug && !showWomen &&
+            val onMainPage = ready && !showCancelled && !safeNowPad && !showSettings &&
                 !(showPinPad && sos.active && !sos.hidden)
             if (onMainPage) SettingsGear { showSettings = true }
 

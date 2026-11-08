@@ -1,5 +1,6 @@
 package com.ekta.sos
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +31,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,7 +57,8 @@ val SkyTop = Color(0xFF6FB1F2)
 val SkyBottom = Color(0xFFA9D3F7)
 val Lime = Color(0xFFE4F25A)
 val Pink = Color(0xFFE84A8A)
-val Mono = FontFamily.Monospace
+/** Typewriter font for English; the normal font for Indian scripts (monospace spacing breaks them up). */
+val Mono: FontFamily get() = if (Lang.latinScript) FontFamily.Monospace else FontFamily.Default
 private val Radius = ALERT_RADIUS_METERS.toInt()
 
 /** Sky gradient, planet + sparkles, and (optionally) the forest along the bottom. */
@@ -88,6 +92,7 @@ fun SosScreen(
     onEditContact: () -> Unit,
     onSafeNow: () -> Unit,
     onSettings: () -> Unit,
+    onDestination: () -> Unit = {},
 ) {
     // In duress the alert keeps running, but her screen must look completely normal.
     if (state.active && !state.hidden) {
@@ -106,17 +111,15 @@ fun SosScreen(
             WobblyLogo("EKTA")
             Spacer(Modifier.height(14.dp))
             Text(
-                "Nobody walks home alone.",
+                stringResource(R.string.tagline),
                 fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 15.sp,
                 color = Ink, letterSpacing = 0.5.sp,
             )
-            Spacer(Modifier.height(26.dp))
-            InfoColumns(contact)
-            Spacer(Modifier.height(30.dp))
+            Spacer(Modifier.height(28.dp))
             SosButton(onClick = onSos, onLongClick = onSafeNow)
             Spacer(Modifier.height(18.dp))
             Text(
-                if (contact == null) "Add an emergency contact" else "Emergency contact: ${contact.name}",
+                if (contact == null) stringResource(R.string.add_contact) else stringResource(R.string.contact_is, contact.name),
                 fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
                 textDecoration = TextDecoration.Underline, textAlign = TextAlign.Center,
                 modifier = Modifier
@@ -124,11 +127,20 @@ fun SosScreen(
                     .padding(6.dp),
             )
             Text(
-                "Press only in a real emergency.",
+                stringResource(R.string.press_only),
                 fontFamily = Mono, fontSize = 12.sp, color = Ink,
             )
+            // ---- dividing line, then "Know your destination" (Safe Score) ----
+            Spacer(Modifier.height(22.dp))
+            Box(Modifier.width(300.dp).height(3.dp).background(Ink))
+            Spacer(Modifier.height(22.dp))
+            ChunkyButton(width = 300.dp, height = 74.dp, color = Color.White, onClick = onDestination) {
+                Text(stringResource(R.string.know_dest), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Ink, letterSpacing = 1.sp)
+                Text(stringResource(R.string.know_dest_d), fontFamily = Mono, fontSize = 11.sp, color = Ink)
+            }
+            Spacer(Modifier.height(6.dp))
             Text(
-                "SETTINGS",
+                stringResource(R.string.settings),
                 fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Ink,
                 letterSpacing = 1.sp, textDecoration = TextDecoration.Underline,
                 modifier = Modifier
@@ -136,7 +148,7 @@ fun SosScreen(
                     .padding(8.dp),
             )
             Spacer(Modifier.weight(1f))
-            Spacer(Modifier.height(230.dp)) // room for the forest
+            Spacer(Modifier.height(150.dp)) // room for the forest
         }
     }
 }
@@ -172,13 +184,15 @@ private fun ActivePage(
             Spacer(Modifier.height(40.dp))
             WobblyLogo("SOS")
             Text(
-                "ACTIVE · ${clock(elapsed)}",
+                stringResource(R.string.sos_active, clock(elapsed)),
                 fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 16.sp,
                 color = Ink, letterSpacing = 2.sp,
             )
             Spacer(Modifier.height(20.dp))
 
             DemoCallCard(elapsed, state.callEnded, state.signal, onEndCall)
+            Spacer(Modifier.height(14.dp))
+            NearbyCallsCard(state.alertId)
             Spacer(Modifier.height(22.dp))
 
             Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -190,32 +204,27 @@ private fun ActivePage(
                         loc != null && age <= LiveLocation.FRESH_MS && loc.accuracy <= 30f -> Step.DONE
                         else -> Step.WORKING
                     },
-                    "YOUR EXACT LOCATION",
+                    stringResource(R.string.st_location),
                     when {
-                        !state.gpsOn -> "Location (GPS) is OFF · turn it on in quick settings!"
-                        loc == null -> "searching GPS… go near a window or outside"
-                        age > LiveLocation.FRESH_MS -> "last known, ${age / 60_000} min old · finding you now…"
-                        loc.accuracy > 30f -> "±${loc.accuracy.toInt()} m · getting more exact…"
-                        else -> "±${loc.accuracy.toInt()} m · live, shared as you move"
+                        !state.gpsOn -> stringResource(R.string.st_gps_off)
+                        loc == null -> stringResource(R.string.st_searching_gps)
+                        age > LiveLocation.FRESH_MS -> stringResource(R.string.st_last_known, (age / 60_000).toInt())
+                        loc.accuracy > 30f -> stringResource(R.string.st_more_exact, loc.accuracy.toInt())
+                        else -> stringResource(R.string.st_live, loc.accuracy.toInt())
                     },
                 )
-                StatusRow(state.mesh, "BLUETOOTH / WI-FI MESH", state.meshNote)
-                StatusRow(state.upload, if (state.online) "INTERNET" else "INTERNET · OFFLINE", state.uploadNote)
+                StatusRow(state.mesh, stringResource(R.string.st_mesh), state.meshNote)
+                StatusRow(state.upload, if (state.online) stringResource(R.string.st_internet) else stringResource(R.string.st_internet_off), state.uploadNote)
                 StatusRow(
                     state.contactSms,
-                    "SMS → ${contact?.name?.uppercase() ?: "EMERGENCY CONTACT"}",
+                    stringResource(R.string.st_sms_to, contact?.name?.uppercase() ?: stringResource(R.string.settings_contact)),
                     state.contactNote,
                 )
-                val women by WomenHelp.state.collectAsState()
-                StatusRow(
-                    Step.DEMO, "SMS → WOMEN'S COMMITTEE",
-                    "DEMO · not actually sent · would go to ${women.total} numbers (see Settings)",
-                )
             }
-            if (state.committeeMessage.isNotBlank()) {
+            if (state.smsPreview.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "\u201C${state.committeeMessage}\u201D",
+                    "\u201C${state.smsPreview}\u201D",
                     fontFamily = Mono, fontSize = 10.sp, color = Ink.copy(alpha = 0.75f),
                     modifier = Modifier.width(320.dp).padding(start = 38.dp),
                 )
@@ -223,8 +232,8 @@ private fun ActivePage(
 
             Spacer(Modifier.height(30.dp))
             ChunkyButton(width = 260.dp, height = 78.dp, color = Color.White, onClick = onCancel) {
-                Text("CANCEL ALERT", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 22.sp, color = Ink, letterSpacing = 2.sp)
-                Text("needs your PIN", fontFamily = Mono, fontSize = 11.sp, color = Ink)
+                Text(stringResource(R.string.cancel_alert), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 22.sp, color = Ink, letterSpacing = 2.sp)
+                Text(stringResource(R.string.needs_pin), fontFamily = Mono, fontSize = 11.sp, color = Ink)
             }
             Spacer(Modifier.height(40.dp))
         }
@@ -251,7 +260,7 @@ private fun DemoCallCard(elapsed: Long, ended: Boolean, signal: Boolean, onEnd: 
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    "DEMO · NO REAL CALL",
+                    stringResource(R.string.demo_no_call),
                     fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 10.sp,
                     color = Ink, letterSpacing = 1.sp,
                     modifier = Modifier.background(Lime).padding(horizontal = 6.dp, vertical = 2.dp),
@@ -259,21 +268,22 @@ private fun DemoCallCard(elapsed: Long, ended: Boolean, signal: Boolean, onEnd: 
                 Spacer(Modifier.height(6.dp))
                 Text(
                     when {
-                        ended -> "Call to 112 ended"
-                        signal -> "Calling 112…"
-                        else -> "Waiting for signal…"
+                        ended -> stringResource(R.string.call_ended)
+                        signal -> stringResource(R.string.calling_112)
+                        else -> stringResource(R.string.waiting_signal)
                     },
                     fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 22.sp, color = Color.White,
                 )
                 Text(
                     when {
-                        ended -> "Police / emergency services"
-                        signal -> "Police / emergency services · ${clock(elapsed)}"
-                        else -> "will call 112 the moment there's signal"
+                        ended -> stringResource(R.string.police_services)
+                        signal -> stringResource(R.string.police_services) + " · ${clock(elapsed)}"
+                        else -> stringResource(R.string.call_when_signal)
                     },
                     fontFamily = Mono, fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f),
                 )
             }
+            val endDesc = stringResource(R.string.end_demo_call)
             if (!ended) {
                 Box(
                     Modifier
@@ -281,14 +291,125 @@ private fun DemoCallCard(elapsed: Long, ended: Boolean, signal: Boolean, onEnd: 
                         .background(Pink, shape = androidx.compose.foundation.shape.CircleShape)
                         .border(2.dp, Color.White, androidx.compose.foundation.shape.CircleShape)
                         .clickable(onClick = onEnd)
-                        .semantics { contentDescription = "End demo call" },
+                        .semantics { contentDescription = endDesc },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("END", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 12.sp, color = Color.White)
+                    Text(stringResource(R.string.end), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 12.sp, color = Color.White)
                 }
             }
         }
     }
+}
+
+/**
+ * Drop-down under the 112 card: the pharmacies, shops and police booths with a phone
+ * number found near her. DEMO ONLY: they are shown as "called", but nothing is dialled.
+ */
+@Composable
+private fun NearbyCallsCard(alertId: String) {
+    val lookup by NearbyPlaces.state.collectAsState()
+    var open by rememberSaveable { mutableStateOf(false) }
+    val mine = lookup.alertId == alertId
+    val places = if (mine) lookup.places.filter { !it.phone.isNullOrBlank() }.sortedBy { it.distanceM } else emptyList()
+    val busy = !mine || lookup.status in setOf(
+        NearbyPlaces.Status.IDLE, NearbyPlaces.Status.SEARCHING,
+        NearbyPlaces.Status.RETRYING, NearbyPlaces.Status.WAITING_INTERNET,
+    )
+    val title = when {
+        places.isNotEmpty() -> stringResource(R.string.nearby_called, places.size)
+        busy && mine && lookup.status == NearbyPlaces.Status.WAITING_INTERNET -> stringResource(R.string.waiting_internet)
+        busy -> stringResource(R.string.finding_shops)
+        else -> stringResource(R.string.no_numbers)
+    }
+
+    val nearbyDesc = stringResource(R.string.nearby_desc)
+    Column(Modifier.width(320.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(Ink)
+                .border(2.dp, Ink)
+                .clickable(enabled = places.isNotEmpty()) { open = !open }
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .semantics { contentDescription = nearbyDesc },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.demo_no_calls),
+                    fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 10.sp,
+                    color = Ink, letterSpacing = 1.sp,
+                    modifier = Modifier.background(Lime).padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(title, fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Color.White)
+                Text(
+                    stringResource(R.string.nearby_types, NearbyPlaces.RADIUS_LABEL),
+                    fontFamily = Mono, fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f),
+                )
+            }
+            if (places.isNotEmpty()) {
+                Text(if (open) "▲" else "▼", fontSize = 18.sp, color = Color.White)
+            }
+        }
+        if (open) {
+            Text(
+                stringResource(R.string.recorded_msg, NearbyAlert.voiceText(NearbyAlert.landmark(places))),
+                fontFamily = Mono, fontSize = 11.sp, color = Ink,
+                modifier = Modifier.fillMaxWidth().background(Lime).border(2.dp, Ink).padding(10.dp),
+            )
+            places.forEach { p ->
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .border(2.dp, Ink)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            categoryLabel(p.category), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 9.sp, color = Ink,
+                            modifier = Modifier.background(categoryColor(p.category)).padding(horizontal = 5.dp, vertical = 1.dp),
+                        )
+                        Text(
+                            if (p.distanceM >= 1000) String.format(java.util.Locale.US, "%.1f km", p.distanceM / 1000.0) else "${p.distanceM} m",
+                            fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Ink,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(stringResource(R.string.called_demo), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 9.sp, color = Ink)
+                    }
+                    Text(p.name, fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink)
+                    // Plain text on purpose: tapping it does nothing (no real calls in this demo).
+                    Text("☎ ${p.phone}", fontFamily = Mono, fontSize = 11.sp, color = Ink)
+                    // Where it is (e.g. "Prithviraj Chauhan Marg, Makanpur Colony"), so she can tell which side of the road.
+                    p.address?.takeIf { it.isNotBlank() }?.let { addr ->
+                        Text(
+                            "📍 " + addr.split(",").map { it.trim() }
+                                .filter { part -> part.isNotEmpty() && !part.any(Char::isDigit) || part.any(Char::isLetter) && part.length > 6 }
+                                .take(2).joinToString(", "),
+                            fontSize = 10.sp, color = Ink.copy(alpha = 0.7f), maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun categoryLabel(c: NearbyPlaces.Category) = stringResource(
+    when (c) {
+        NearbyPlaces.Category.POLICE -> R.string.cat_police
+        NearbyPlaces.Category.PHARMACY -> R.string.cat_pharmacy
+        NearbyPlaces.Category.SHOP -> R.string.cat_shop
+    },
+)
+
+private fun categoryColor(c: NearbyPlaces.Category) = when (c) {
+    NearbyPlaces.Category.POLICE -> Color(0xFF9FC3FF)
+    NearbyPlaces.Category.PHARMACY -> Color(0xFFB8F0C8)
+    NearbyPlaces.Category.SHOP -> Lime
 }
 
 @Composable
@@ -339,38 +460,6 @@ fun WobblyLogo(text: String) {
     }
 }
 
-@Composable
-private fun InfoColumns(contact: EmergencyContact?) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        InfoBlock("WHO HEARS YOU", "everyone with Ekta", "within $Radius m · even offline", Modifier.weight(1f))
-        Box(Modifier.width(1.5.dp).height(78.dp).background(Ink))
-        InfoBlock(
-            "ON SOS",
-            "112 is called (demo)",
-            if (contact == null) "+ SMS to your contact" else "+ live location SMS",
-            Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun InfoBlock(title: String, line1: String, line2: String, modifier: Modifier) {
-    Column(modifier.padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            title, fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-            color = Ink, letterSpacing = 1.sp, textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(line1, fontFamily = Mono, fontSize = 12.sp, color = Ink, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(4.dp))
-        Text(line2, fontFamily = Mono, fontSize = 12.sp, color = Ink, textAlign = TextAlign.Center)
-    }
-}
-
 /** Chunky lime button with a hard black offset shadow; it "sinks" into the shadow on press. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -415,12 +504,13 @@ fun ChunkyButton(
 
 @Composable
 private fun SosButton(onClick: () -> Unit, onLongClick: () -> Unit) {
+    val sosDesc = stringResource(R.string.sos_desc, Radius)
     ChunkyButton(
         width = 230.dp, height = 120.dp, onClick = onClick,
         onLongClick = onLongClick, // hidden: "I'm safe now"
-        modifier = Modifier.semantics { contentDescription = "SOS. Alert everyone within $Radius metres" },
+        modifier = Modifier.semantics { contentDescription = sosDesc },
     ) {
         Text("SOS", fontSize = 52.sp, fontWeight = FontWeight.Black, color = Ink, letterSpacing = 6.sp)
-        Text("press for help", fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Ink)
+        Text(stringResource(R.string.press_for_help), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Ink)
     }
 }

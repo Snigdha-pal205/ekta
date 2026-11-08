@@ -1,0 +1,17 @@
+{
+  "_note": "Typical opening hours by TomTom category, used when a place has no opening hours. [open, close] in 24 h; close may be past midnight (e.g. 26 = 2 AM); [0, 24] = always open.",
+  "default": [10, 20],
+  "restaurant": [11, 23],
+  "café/pub": [9, 23],
+  "cafe": [9, 23],
+  "fast food": [10, 24],
+  "shop": [10, 21],
+  "food drinks: grocers": [7, 22],
+  "supermarkets & hypermarkets": [9, 22],
+  "convenience store": [7, 23],
+  "pharmacy": [9, 22],
+  "petrol station": [0, 24],
+  "hospital": [0, 24],
+  "hotel/motel": [0, 24],
+  "hotel": [0, 24]
+}

@@ -1,5 +1,6 @@
 package com.ekta.sos
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -51,35 +52,35 @@ fun SetupScreen(status: SetupStatus, message: String?, onTurnOn: () -> Unit) {
             WobblyLogo("EKTA")
             Spacer(Modifier.height(10.dp))
             Text(
-                "One-time setup. Takes under a minute.",
+                stringResource(R.string.setup_intro),
                 fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Ink,
             )
             Spacer(Modifier.height(24.dp))
 
             Column(Modifier.width(310.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
-                StatusRow(s(status.location), "LOCATION", "so we know who is within $r m")
-                StatusRow(s(status.notifications), "NOTIFICATIONS", "so you hear when someone needs help")
-                StatusRow(s(status.alwaysOn), "ALWAYS ON", "keeps working in the background and after a restart")
-                StatusRow(s(status.fullScreen), "FULL-SCREEN ALERTS", "a nearby SOS fills your screen and buzzes")
-                StatusRow(s(status.sms), "SMS", "to text your live location on SOS")
-                StatusRow(s(status.mesh), "BLUETOOTH MESH", "SOS works with no network: phones pass it on")
+                StatusRow(s(status.location), stringResource(R.string.setup_location), stringResource(R.string.setup_location_d, r))
+                StatusRow(s(status.notifications), stringResource(R.string.setup_notifications), stringResource(R.string.setup_notifications_d))
+                StatusRow(s(status.alwaysOn), stringResource(R.string.setup_always_on), stringResource(R.string.setup_always_on_d))
+                StatusRow(s(status.fullScreen), stringResource(R.string.setup_fullscreen), stringResource(R.string.setup_fullscreen_d))
+                StatusRow(s(status.sms), stringResource(R.string.setup_sms), stringResource(R.string.setup_sms_d))
+                StatusRow(s(status.mesh), stringResource(R.string.setup_mesh), stringResource(R.string.setup_mesh_d))
                 StatusRow(
-                    s(status.contact != null), "EMERGENCY CONTACT",
-                    status.contact?.let { "${it.name} · ${it.number}" } ?: "who gets your live location",
+                    s(status.contact != null), stringResource(R.string.settings_contact),
+                    status.contact?.let { "${it.name} · ${it.number}" } ?: stringResource(R.string.setup_contact_d),
                 )
-                StatusRow(s(status.pins), "CANCEL PINS", "a PIN to cancel, and a secret duress PIN")
+                StatusRow(s(status.pins), stringResource(R.string.pins_title), stringResource(R.string.setup_pins_d))
             }
 
             Spacer(Modifier.height(28.dp))
             ChunkyButton(width = 280.dp, height = 76.dp, onClick = onTurnOn) {
                 Text(
-                    "TURN ON SOS ALERTS", fontFamily = Mono, fontWeight = FontWeight.Black,
+                    stringResource(R.string.setup_turn_on), fontFamily = Mono, fontWeight = FontWeight.Black,
                     fontSize = 17.sp, color = Ink, letterSpacing = 1.sp,
                 )
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                message ?: "Tap Allow on each popup. On settings pages, switch Ekta on, then press back. You'll never be asked again.",
+                message ?: stringResource(R.string.setup_help),
                 fontFamily = Mono, fontSize = 12.sp, color = Ink,
                 textAlign = TextAlign.Center, modifier = Modifier.width(290.dp),
             )

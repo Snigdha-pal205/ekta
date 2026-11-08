@@ -1,5 +1,6 @@
 package com.ekta.sos
 
+import androidx.compose.ui.res.stringResource
 import android.app.NotificationManager
 import android.Manifest
 import android.annotation.SuppressLint
@@ -107,6 +108,8 @@ class AlertActivity : ComponentActivity() {
         val lat: Double, val lng: Double, val distance: Int, val id: String, val at: Long,
         val hops: Int, // -1 = came over the internet, else Bluetooth / Wi-Fi hops
     )
+
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(Lang.wrap(base))
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -281,16 +284,16 @@ private fun AlertScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        "DURESS", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 26.sp,
+                        stringResource(R.string.duress), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 26.sp,
                         color = Lime, letterSpacing = 4.sp,
                     )
                     Text(
-                        "She was forced to cancel. Do NOT call her phone.",
+                        stringResource(R.string.duress_forced),
                         fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 15.sp,
                         color = Color.White, textAlign = TextAlign.Center,
                     )
                     Text(
-                        "Her location keeps updating below. Go together or alert others.",
+                        stringResource(R.string.duress_keeps),
                         fontFamily = Mono, fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f),
                         textAlign = TextAlign.Center,
                     )
@@ -324,7 +327,7 @@ private fun AlertScreen(
             WobblyLogo("SOS")
             Spacer(Modifier.height(10.dp))
             Text(
-                "SOMEONE NEARBY NEEDS HELP",
+                stringResource(R.string.someone_needs_help),
                 fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp,
                 color = Ink, letterSpacing = 1.sp, textAlign = TextAlign.Center,
             )
@@ -338,14 +341,14 @@ private fun AlertScreen(
                 // how unsure they are, say "VERY CLOSE" instead of a misleading number.
                 val close = alert.distance < 0 || alert.distance <= maxOf(uncertainty, 20.0)
                 Text(
-                    if (close) "VERY CLOSE" else "${alert.distance} m away",
+                    if (close) stringResource(R.string.very_close) else stringResource(R.string.m_away, alert.distance.toInt()),
                     fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Lime,
                 )
             }
             if (alert.distance >= 0 && alert.distance <= maxOf(uncertainty, 20.0) && uncertainty > 20.0) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "within ~${(Math.ceil(uncertainty / 10.0) * 10).toInt()} m · look around you",
+                    stringResource(R.string.look_around, (Math.ceil(uncertainty / 10.0) * 10).toInt()),
                     fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
                     textAlign = TextAlign.Center,
                 )
@@ -360,23 +363,25 @@ private fun AlertScreen(
                 }
             }
             val ago = if (locationAt > 0) ((now - locationAt) / 1000).coerceAtLeast(0) else -1
+            val liveLabel = stringResource(R.string.live_location)
+            val agoLabel = if (ago < 60) stringResource(R.string.updated_s_ago, ago.toInt()) else stringResource(R.string.updated_min_ago, (ago / 60).toInt())
             Text(
                 buildString {
-                    append("LIVE LOCATION")
+                    append(liveLabel)
                     if (accuracy != null && accuracy > 0) append(" · ±${accuracy.toInt()} m")
-                    if (ago >= 0) append(" · updated ${if (ago < 60) "${ago}s" else "${ago / 60} min"} ago")
+                    if (ago >= 0) append(" · $agoLabel")
                 },
                 fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
                 textAlign = TextAlign.Center,
             )
             Text(
-                "Alert received at ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(alert.at))}",
+                stringResource(R.string.received_at, DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(alert.at))),
                 fontFamily = Mono, fontSize = 13.sp, color = Ink,
             )
             if (alert.hops >= 0) {
                 Text(
-                    if (alert.hops == 0) "via Bluetooth/Wi-Fi straight from her phone · no network needed"
-                    else "via Bluetooth/Wi-Fi through ${alert.hops} phone(s) · no network needed",
+                    if (alert.hops == 0) stringResource(R.string.via_direct)
+                    else stringResource(R.string.via_hops, alert.hops),
                     fontFamily = Mono, fontSize = 11.sp, color = Ink, textAlign = TextAlign.Center,
                 )
             }
@@ -384,17 +389,17 @@ private fun AlertScreen(
             Spacer(Modifier.height(26.dp))
             if (ringing) {
                 ChunkyButton(width = 280.dp, height = 54.dp, color = Ink, onClick = onStopSound) {
-                    Text("STOP SOUND", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Lime, letterSpacing = 2.sp)
+                    Text(stringResource(R.string.stop_sound), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Lime, letterSpacing = 2.sp)
                 }
                 Spacer(Modifier.height(16.dp))
             }
             ChunkyButton(width = 280.dp, height = 74.dp, onClick = onOpenMap) {
-                Text("SHOW ME WHERE", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 19.sp, color = Ink, letterSpacing = 1.sp)
-                Text("walking directions to her, live", fontFamily = Mono, fontSize = 11.sp, color = Ink)
+                Text(stringResource(R.string.show_me_where), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 19.sp, color = Ink, letterSpacing = 1.sp)
+                Text(stringResource(R.string.walking_dirs), fontFamily = Mono, fontSize = 11.sp, color = Ink)
             }
             Spacer(Modifier.height(18.dp))
             ChunkyButton(width = 280.dp, height = 54.dp, color = Color.White, onClick = onDismiss) {
-                Text("DISMISS", fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Ink, letterSpacing = 2.sp)
+                Text(stringResource(R.string.dismiss), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Ink, letterSpacing = 2.sp)
             }
             Spacer(Modifier.weight(1.2f))
         }
@@ -427,17 +432,17 @@ private fun CancelledByHer(onDismiss: () -> Unit) {
             ) { Text("✓", fontSize = 56.sp, fontWeight = FontWeight.Black, color = Ink) }
             Spacer(Modifier.height(24.dp))
             Text(
-                "ALERT CANCELLED", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 22.sp,
+                stringResource(R.string.alert_cancelled_caps), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 22.sp,
                 color = Ink, letterSpacing = 2.sp,
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "She entered her PIN and is safe. Thank you for being ready to help.",
+                stringResource(R.string.she_is_safe_text),
                 fontFamily = Mono, fontSize = 14.sp, color = Ink, textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(36.dp))
             ChunkyButton(width = 280.dp, height = 60.dp, color = Color.White, onClick = onDismiss) {
-                Text("OK", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 18.sp, color = Ink, letterSpacing = 2.sp)
+                Text(stringResource(R.string.ok), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 18.sp, color = Ink, letterSpacing = 2.sp)
             }
             Spacer(Modifier.weight(1.2f))
         }

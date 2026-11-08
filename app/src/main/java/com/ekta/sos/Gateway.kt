@@ -109,15 +109,14 @@ object Gateway {
             app, MeshMessage(type = MeshMessage.TYPE_ACK, id = msg.id, gateway = me, sms = sms, status = msg.status),
         )
         if (msg.contactNumber.isBlank() || !SmsOutbox.canSend(app)) return ack(MeshMessage.SMS_NONE)
-        val who = msg.senderName.ifBlank { "Your contact" }
+        // In HER language (sent along with her alert), not this phone's.
+        val who = msg.senderName.ifBlank { Lang.sIn(app, msg.lang, R.string.sms_your_contact) }
         val link = String.format(Locale.US, "https://maps.google.com/?q=%.6f,%.6f", msg.lat, msg.lng)
         val text = if (msg.status == AlertStatus.CANCELLED) {
-            "EKTA: $who is safe, alert cancelled (she cancelled it with her PIN). (relayed by a nearby Ekta phone)"
+            Lang.sIn(app, msg.lang, R.string.sms_gw_safe, who)
         } else {
-            "EKTA DURESS: $who was forced to cancel her SOS and may still be in danger. Do NOT call her phone. " +
-                "Last location: $link (relayed by a nearby Ekta phone)"
+            Lang.sIn(app, msg.lang, R.string.sms_gw_duress, who, link)
         }
-        DemoNotify.committee(text)
         DemoNotify.police(text)
         ack(MeshMessage.SMS_QUEUED)
         SmsOutbox.send(app, "gw-${msg.status}-${msg.id}", msg.contactNumber, text) { ack(MeshMessage.SMS_SENT) }
@@ -198,11 +197,10 @@ object Gateway {
     }
 
     private fun gatewaySms(msg: MeshMessage): String {
-        val who = msg.senderName.ifBlank { "Someone who saved you as their emergency contact" }
+        val who = msg.senderName.ifBlank { Lang.sIn(app, msg.lang, R.string.sms_someone) }
         val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(msg.sentAt))
         val link = String.format(Locale.US, "https://maps.google.com/?q=%.6f,%.6f", msg.lat, msg.lng)
-        return "EKTA SOS: $who pressed SOS at $time in an area with no network and needs help. " +
-            "Location: $link (relayed by a nearby Ekta phone)"
+        return Lang.sIn(app, msg.lang, R.string.sms_gw_sos, who, time, link)
     }
 
     /** Be open with the gateway phone's owner: their phone sent an SMS for someone. */
@@ -210,12 +208,11 @@ object Gateway {
         AlertListenerService.createChannels(app)
         val n = NotificationCompat.Builder(app, AlertListenerService.RELAY_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sos)
-            .setContentTitle("Your phone relayed an SOS")
-            .setContentText("Someone nearby had no network. Ekta put their alert online and texted their emergency contact.")
+            .setContentTitle(Lang.s(app, R.string.n_relay_title))
+            .setContentText(Lang.s(app, R.string.n_relay_text))
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
-                    "Someone nearby had no network. Ekta passed their SOS through ${msg.hops} phone(s) to yours, " +
-                        "put it online, and texted their emergency contact from your SIM.",
+                    Lang.s(app, R.string.n_relay_big, msg.hops),
                 ),
             )
             .setAutoCancel(true)

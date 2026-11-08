@@ -33,6 +33,7 @@ data class MeshMessage(
     val locHash: String = "",    // SOS: sha256 of the live-location key
     val status: String = "",   // STATUS: cancelled / duress / active (location). ACK: which message the SMS was for ("" = the SOS)
     val secret: String = "",   // STATUS: the revealed key
+    val lang: String = "",     // SOS / STATUS: her app language, so relayed SMS use it ("" = English)
 ) {
     /** One key per distinct message, so each is passed on only once per phone. */
     val key get() = when (type) {
@@ -47,11 +48,11 @@ data class MeshMessage(
             TYPE_SOS -> {
                 put("s", sender); put("la", lat); put("lo", lng); put("ac", accuracy); put("ts", sentAt)
                 put("n", senderName); put("cn", contactName); put("cp", contactNumber)
-                put("hc", cancelHash); put("hd", duressHash); put("hl", locHash)
+                put("hc", cancelHash); put("hd", duressHash); put("hl", locHash); put("lg", lang)
             }
             TYPE_STATUS -> {
                 put("s", sender); put("la", lat); put("lo", lng); put("ac", accuracy); put("ts", sentAt)
-                put("n", senderName); put("cp", contactNumber); put("st", status); put("k", secret)
+                put("n", senderName); put("cp", contactNumber); put("st", status); put("k", secret); put("lg", lang)
             }
             else -> {
                 put("g", gateway); put("sms", sms); put("st", status)
@@ -86,6 +87,7 @@ data class MeshMessage(
             locHash = o.optString("hl"),
             status = o.optString("st"),
             secret = o.optString("k"),
+            lang = o.optString("lg"),
         )
 
         fun encode(list: Collection<MeshMessage>): ByteArray =

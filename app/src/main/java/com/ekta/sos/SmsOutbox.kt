@@ -101,7 +101,7 @@ object SmsOutbox {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             val sms = smsManager()
-            val parts = sms.divideMessage(item.text)
+            val parts = split(sms, item.text)
             if (parts.size == 1) {
                 sms.sendTextMessage(item.number, null, item.text, sent, null)
             } else {
@@ -110,11 +110,35 @@ object SmsOutbox {
                 intents.add(sent)
                 sms.sendMultipartTextMessage(item.number, null, parts, intents, null)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("EktaSms", "send failed (${item.text.length} chars)", e)
             item.inFlight = false
         }
         // If the radio never answers, unstick after a while so the loop retries.
         handler.postDelayed({ item.inFlight = false }, RETRY_MS * 3)
+    }
+
+    /**
+     * SMS parts. Android's divideMessage throws SecurityException for non-English
+     * (Unicode) text on some phones, so then split it ourselves: 67 characters per
+     * part (the Unicode multipart limit), breaking at a space where possible.
+     */
+    private fun split(sms: SmsManager, text: String): ArrayList<String> = try {
+        sms.divideMessage(text)
+    } catch (e: Exception) {
+        val gsm = text.all { it.code < 128 }
+        val max = if (gsm) 153 else 67
+        if (text.length <= (if (gsm) 160 else 70)) arrayListOf(text)
+        else ArrayList<String>().apply {
+            var rest = text
+            while (rest.length > max) {
+                var cut = rest.lastIndexOf(' ', max).takeIf { it > max / 2 } ?: max
+                if (Character.isHighSurrogate(rest[cut - 1])) cut-- // never split an emoji in half
+                add(rest.substring(0, cut))
+                rest = rest.substring(cut)
+            }
+            if (rest.isNotEmpty()) add(rest)
+        }
     }
 
     private fun smsManager(): SmsManager =

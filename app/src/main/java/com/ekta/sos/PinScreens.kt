@@ -1,5 +1,6 @@
 package com.ekta.sos
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,8 +47,8 @@ fun PinPadScreen(
     message: String?,
     onSubmit: (String) -> Unit,
     onBack: () -> Unit,
-    title: String = "CANCEL ALERT",
-    backLabel: String = "BACK TO SOS",
+    title: String = stringResource(R.string.cancel_alert),
+    backLabel: String = stringResource(R.string.back_to_sos),
 ) {
     var pin by remember { mutableStateOf("") }
 
@@ -66,7 +67,7 @@ fun PinPadScreen(
                 color = Ink, letterSpacing = 2.sp,
             )
             Spacer(Modifier.height(6.dp))
-            Text("Enter your PIN", fontFamily = Mono, fontSize = 14.sp, color = Ink)
+            Text(stringResource(R.string.pin_enter), fontFamily = Mono, fontSize = 14.sp, color = Ink)
             Spacer(Modifier.height(26.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -158,7 +159,7 @@ fun AlertCancelledScreen() {
             ) { Text("✓", fontSize = 64.sp, fontWeight = FontWeight.Black, color = Ink) }
             Spacer(Modifier.height(26.dp))
             Text(
-                "Alert cancelled", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 26.sp,
+                stringResource(R.string.alert_cancelled), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 26.sp,
                 color = Ink,
             )
             Spacer(Modifier.weight(1f))
@@ -175,8 +176,8 @@ fun PinSetupDialog(onSave: (normal: String, duress: String) -> Unit, onDismiss: 
     var duress by remember { mutableStateOf("") }
     val len = PinStore.PIN_LENGTH
     val error = when {
-        normal.length == len && normal2.length == len && normal != normal2 -> "The two cancel PINs don't match"
-        normal.length == len && duress.length == len && normal == duress -> "The duress PIN must be different"
+        normal.length == len && normal2.length == len && normal != normal2 -> stringResource(R.string.pin_mismatch)
+        normal.length == len && duress.length == len && normal == duress -> stringResource(R.string.pin_duress_same)
         else -> null
     }
     val valid = normal.length == len && normal == normal2 && duress.length == len && normal != duress
@@ -190,30 +191,29 @@ fun PinSetupDialog(onSave: (normal: String, duress: String) -> Unit, onDismiss: 
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("CANCEL PINS", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Ink, letterSpacing = 1.sp)
+            Text(stringResource(R.string.pins_title), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Ink, letterSpacing = 1.sp)
             Text(
-                "An SOS can only be stopped with a PIN.",
+                stringResource(R.string.pins_intro),
                 fontFamily = Mono, fontSize = 12.sp, color = Ink,
             )
-            PinField("Cancel PIN ($len digits)", normal) { normal = it }
-            PinField("Cancel PIN again", normal2) { normal2 = it }
+            PinField(stringResource(R.string.pin_cancel_label, len), normal) { normal = it }
+            PinField(stringResource(R.string.pin_cancel_again), normal2) { normal2 = it }
             Text(
-                "DURESS PIN: if someone forces you to cancel, enter this one instead. " +
-                    "Your screen will say \"Alert cancelled\", but help keeps coming and nobody will call your phone.",
+                stringResource(R.string.pins_duress_explain),
                 fontFamily = Mono, fontSize = 11.sp, color = Ink,
                 modifier = Modifier.background(Color.White).padding(8.dp),
             )
-            PinField("Duress PIN ($len digits)", duress) { duress = it }
+            PinField(stringResource(R.string.pin_duress_label, len), duress) { duress = it }
             if (error != null) {
                 Text(error, fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Pink)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "LATER", fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
+                    stringResource(R.string.later), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
                     modifier = Modifier.clickable(onClick = onDismiss).padding(12.dp),
                 )
                 Text(
-                    "SAVE PINS", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 14.sp,
+                    stringResource(R.string.save_pins), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 14.sp,
                     color = if (valid) Ink else Ink.copy(alpha = 0.35f),
                     modifier = Modifier
                         .background(if (valid) Lime else Color.Transparent)
@@ -247,7 +247,7 @@ private fun PinField(label: String, value: String, onChange: (String) -> Unit) {
 
 /** Settings. "I'm safe now" looks and behaves the same whether or not an alert is running. */
 @Composable
-fun SettingsScreen(onContact: () -> Unit, onSafeNow: () -> Unit, onDebug: () -> Unit, onWomen: () -> Unit, onBack: () -> Unit) {
+fun SettingsScreen(onContact: () -> Unit, onSafeNow: () -> Unit, onLanguage: () -> Unit, onBack: () -> Unit) {
     IllustratedBackground {
         Column(
             Modifier
@@ -257,18 +257,22 @@ fun SettingsScreen(onContact: () -> Unit, onSafeNow: () -> Unit, onDebug: () -> 
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(80.dp))
-            Text("SETTINGS", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 24.sp, color = Ink, letterSpacing = 2.sp)
+            Text(stringResource(R.string.settings), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 24.sp, color = Ink, letterSpacing = 2.sp)
             Spacer(Modifier.height(30.dp))
-            SettingsItem("EMERGENCY CONTACT", "change who gets your live location", onContact)
+            SettingsItem(stringResource(R.string.settings_contact), stringResource(R.string.settings_contact_detail), onContact)
             Spacer(Modifier.height(14.dp))
-            SettingsItem("I'M SAFE NOW", "end an alert with your PIN", onSafeNow)
+            SettingsItem(stringResource(R.string.safe_now), stringResource(R.string.safe_now_detail), onSafeNow)
             Spacer(Modifier.height(14.dp))
-            SettingsItem("WOMEN COMMITTEE", "women's helplines + nearby women's offices (demo)", onWomen)
-            Spacer(Modifier.height(14.dp))
-            SettingsItem("DEBUG PANEL", "nearby pharmacies, shops, police (demo)", onDebug)
+            // Always shown in English too, so someone who picked the wrong language can find it.
+            val lang = Lang.currentOption(androidx.compose.ui.platform.LocalContext.current)
+            SettingsItem(
+                stringResource(R.string.language_title) + if (lang.tag != "en") " · LANGUAGE" else "",
+                lang.native,
+                onLanguage,
+            )
             Spacer(Modifier.height(30.dp))
             Text(
-                "BACK",
+                stringResource(R.string.back),
                 fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
                 modifier = Modifier.clickable(onClick = onBack).padding(10.dp),
             )

@@ -25,7 +25,7 @@ import java.net.URL
  * Google Places API (New) "Nearby Search" when a Google key has been added.
  *
  * HACKATHON DEMO: nobody on this list is ever called or messaged. The list is only
- * shown in Settings → Debug panel. (No code here dials, texts or opens any app.)
+ * shown on the SOS page as "called (demo)". (No code here dials, texts or opens any app.)
  */
 object NearbyPlaces {
     const val RADIUS_M = 1000.0
@@ -33,7 +33,7 @@ object NearbyPlaces {
     val RADIUS_LABEL: String get() = if (RADIUS_M >= 1000) "${(RADIUS_M / 1000).toInt()} km" else "${RADIUS_M.toInt()} m"
     private const val DEFAULT_BASE_URL = "https://places.googleapis.com"
     private const val PREFS = "ekta"
-    private const val PREF_KEY = "places_api_key"        // key pasted in the Debug panel
+    private const val PREF_KEY = "places_api_key"        // old: key pasted by hand (no longer in the app)
     private const val PREF_BASE_URL = "places_base_url"  // debug builds only: test server
     private const val PREF_OSM_URLS = "osm_base_urls"     // debug builds only: test servers (comma-separated)
     const val SOURCE_OSM = "OpenStreetMap (free, no key)"
@@ -103,7 +103,7 @@ object NearbyPlaces {
     private const val MAX_RETRIES = 3
     private const val RETRY_AFTER_MS = 30_000L
 
-    /** The key to use: one pasted in the Debug panel, else the one built into the app. */
+    /** The key to use: one saved earlier, else the one built into the app. */
     fun apiKey(context: Context): String =
         prefs(context).getString(PREF_KEY, null)?.trim()?.takeIf { it.isNotEmpty() } ?: BuildConfig.PLACES_API_KEY
 

@@ -1,6 +1,19 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Safe Score community ratings: one vote per phone per time of day for each place.
+    // ratings/{placeId}/votes/{voteId}. Anyone can read; votes must be 1–5 stars.
+    match /ratings/{placeId}/votes/{voteId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasOnly(['stars', 'band', 'lat', 'lng', 'name', 'at'])
+        && request.resource.data.stars is int
+        && request.resource.data.stars >= 1 && request.resource.data.stars <= 5
+        && request.resource.data.band in ['morning', 'afternoon', 'evening', 'night']
+        && request.resource.data.lat is number && request.resource.data.lng is number
+        && request.resource.data.name is string && request.resource.data.name.size() <= 120;
+      allow delete: if false;
+    }
+
     match /alerts/{alertId} {
       function data() { return request.resource.data; }
       function keyHash() { return hashing.sha256(data().statusKey).toHexString().lower(); }

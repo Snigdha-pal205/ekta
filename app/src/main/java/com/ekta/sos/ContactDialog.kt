@@ -1,5 +1,6 @@
 package com.ekta.sos
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -56,14 +57,14 @@ fun ContactDialog(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("EMERGENCY CONTACT", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Ink, letterSpacing = 1.sp)
+            Text(stringResource(R.string.settings_contact), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Ink, letterSpacing = 1.sp)
             Text(
-                "When you press SOS, this person gets an SMS with your live location.",
+                stringResource(R.string.contact_intro),
                 fontFamily = Mono, fontSize = 12.sp, color = Ink,
             )
-            Field("Your name (so they know it's you)", myName) { myName = it }
+            Field(stringResource(R.string.contact_my_name), myName) { myName = it }
             Text(
-                "PICK FROM CONTACTS",
+                stringResource(R.string.contact_pick),
                 fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
                 modifier = Modifier
                     .background(Lime)
@@ -71,17 +72,17 @@ fun ContactDialog(
                     .clickable(onClick = onPickFromContacts)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
-            Text("or type it in:", fontFamily = Mono, fontSize = 12.sp, color = Ink)
-            Field("Name", name) { name = it }
-            Field("Phone number", number, KeyboardType.Phone) { number = it }
+            Text(stringResource(R.string.contact_or_type), fontFamily = Mono, fontSize = 12.sp, color = Ink)
+            Field(stringResource(R.string.contact_name), name) { name = it }
+            Field(stringResource(R.string.contact_phone), number, KeyboardType.Phone) { number = it }
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "CANCEL", fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
+                    stringResource(R.string.cancel), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
                     modifier = Modifier.clickable(onClick = onDismiss).padding(12.dp),
                 )
                 Text(
-                    "SAVE", fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 14.sp,
+                    stringResource(R.string.save), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 14.sp,
                     color = if (valid) Ink else Ink.copy(alpha = 0.35f),
                     modifier = Modifier
                         .background(if (valid) Lime else Color.Transparent)

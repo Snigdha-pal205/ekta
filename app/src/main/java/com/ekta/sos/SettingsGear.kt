@@ -1,5 +1,6 @@
 package com.ekta.sos
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,13 +34,14 @@ fun SettingsGear(onClick: () -> Unit) {
             .padding(12.dp),
         contentAlignment = Alignment.TopStart,
     ) {
+        val desc = stringResource(R.string.open_settings)
         Box(
             Modifier
                 .size(46.dp)
                 .background(Color.White, CircleShape)
                 .border(2.dp, Ink, CircleShape)
                 .clickable(onClick = onClick)
-                .semantics { contentDescription = "Open settings" },
+                .semantics { contentDescription = desc },
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Filled.Settings, contentDescription = null, tint = Ink, modifier = Modifier.size(26.dp))

@@ -1,0 +1,1090 @@
+{
+ "_note": "SAMPLE DATA for the hackathon demo. Generated points, NOT real incident reports.",
+ "incidents": [
+  {
+   "lat": 28.624565,
+   "lng": 77.354204,
+   "date": "2026-02-08",
+   "hour": 22,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.61936,
+   "lng": 77.352062,
+   "date": "2026-08-25",
+   "hour": 21,
+   "type": "theft"
+  },
+  {
+   "lat": 28.627645,
+   "lng": 77.35615,
+   "date": "2026-02-15",
+   "hour": 0,
+   "type": "theft"
+  },
+  {
+   "lat": 28.62566,
+   "lng": 77.359082,
+   "date": "2026-06-26",
+   "hour": 13,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.631878,
+   "lng": 77.358746,
+   "date": "2026-09-10",
+   "hour": 9,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.61694,
+   "lng": 77.349022,
+   "date": "2026-01-28",
+   "hour": 20,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.627149,
+   "lng": 77.352951,
+   "date": "2026-09-16",
+   "hour": 22,
+   "type": "theft"
+  },
+  {
+   "lat": 28.620923,
+   "lng": 77.350337,
+   "date": "2026-08-13",
+   "hour": 22,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.634193,
+   "lng": 77.353217,
+   "date": "2026-09-17",
+   "hour": 21,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.626736,
+   "lng": 77.354674,
+   "date": "2026-09-22",
+   "hour": 1,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.627332,
+   "lng": 77.352647,
+   "date": "2026-02-21",
+   "hour": 20,
+   "type": "theft"
+  },
+  {
+   "lat": 28.635049,
+   "lng": 77.352877,
+   "date": "2026-05-18",
+   "hour": 15,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.623805,
+   "lng": 77.347886,
+   "date": "2026-07-14",
+   "hour": 5,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.625736,
+   "lng": 77.354263,
+   "date": "2026-08-26",
+   "hour": 18,
+   "type": "theft"
+  },
+  {
+   "lat": 28.624936,
+   "lng": 77.351989,
+   "date": "2026-08-17",
+   "hour": 21,
+   "type": "theft"
+  },
+  {
+   "lat": 28.63249,
+   "lng": 77.349203,
+   "date": "2026-05-11",
+   "hour": 16,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.630561,
+   "lng": 77.35296,
+   "date": "2026-05-15",
+   "hour": 23,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.61384,
+   "lng": 77.356081,
+   "date": "2026-02-21",
+   "hour": 8,
+   "type": "theft"
+  },
+  {
+   "lat": 28.627066,
+   "lng": 77.352335,
+   "date": "2026-03-15",
+   "hour": 22,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.625702,
+   "lng": 77.354299,
+   "date": "2026-02-20",
+   "hour": 21,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.625371,
+   "lng": 77.354187,
+   "date": "2026-05-22",
+   "hour": 21,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.624688,
+   "lng": 77.353637,
+   "date": "2026-08-23",
+   "hour": 20,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.629134,
+   "lng": 77.358531,
+   "date": "2026-10-23",
+   "hour": 18,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.627186,
+   "lng": 77.356229,
+   "date": "2026-10-10",
+   "hour": 18,
+   "type": "theft"
+  },
+  {
+   "lat": 28.628281,
+   "lng": 77.362748,
+   "date": "2026-01-04",
+   "hour": 14,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.625453,
+   "lng": 77.35467,
+   "date": "2026-01-01",
+   "hour": 18,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.630992,
+   "lng": 77.350681,
+   "date": "2026-08-15",
+   "hour": 19,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.624333,
+   "lng": 77.35499,
+   "date": "2026-06-15",
+   "hour": 19,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.62488,
+   "lng": 77.35306,
+   "date": "2026-03-02",
+   "hour": 20,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.627692,
+   "lng": 77.359882,
+   "date": "2026-01-05",
+   "hour": 20,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.633027,
+   "lng": 77.351965,
+   "date": "2026-03-22",
+   "hour": 22,
+   "type": "theft"
+  },
+  {
+   "lat": 28.627513,
+   "lng": 77.352046,
+   "date": "2026-07-10",
+   "hour": 4,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.626173,
+   "lng": 77.351499,
+   "date": "2026-07-10",
+   "hour": 17,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.621102,
+   "lng": 77.353394,
+   "date": "2026-09-26",
+   "hour": 8,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.630964,
+   "lng": 77.352503,
+   "date": "2026-08-21",
+   "hour": 11,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.621035,
+   "lng": 77.344575,
+   "date": "2026-01-12",
+   "hour": 22,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.620137,
+   "lng": 77.352741,
+   "date": "2026-02-20",
+   "hour": 20,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.617865,
+   "lng": 77.350111,
+   "date": "2026-10-09",
+   "hour": 20,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.626374,
+   "lng": 77.354076,
+   "date": "2026-03-04",
+   "hour": 20,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.622832,
+   "lng": 77.350817,
+   "date": "2026-09-11",
+   "hour": 8,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.63135,
+   "lng": 77.2192,
+   "date": "2026-02-01",
+   "hour": 15,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.63207,
+   "lng": 77.21715,
+   "date": "2026-01-10",
+   "hour": 2,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.627071,
+   "lng": 77.223618,
+   "date": "2026-08-20",
+   "hour": 19,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.631246,
+   "lng": 77.216468,
+   "date": "2026-10-15",
+   "hour": 16,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.627914,
+   "lng": 77.207814,
+   "date": "2026-05-13",
+   "hour": 9,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.631974,
+   "lng": 77.216182,
+   "date": "2026-05-23",
+   "hour": 11,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.629282,
+   "lng": 77.215193,
+   "date": "2026-01-18",
+   "hour": 23,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.636379,
+   "lng": 77.221454,
+   "date": "2026-10-04",
+   "hour": 1,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.636864,
+   "lng": 77.215665,
+   "date": "2026-05-01",
+   "hour": 16,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.6317,
+   "lng": 77.220079,
+   "date": "2026-07-22",
+   "hour": 5,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.631415,
+   "lng": 77.216235,
+   "date": "2026-09-22",
+   "hour": 18,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.636536,
+   "lng": 77.217301,
+   "date": "2026-09-16",
+   "hour": 15,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.632752,
+   "lng": 77.217598,
+   "date": "2026-03-18",
+   "hour": 0,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.625105,
+   "lng": 77.215759,
+   "date": "2026-06-02",
+   "hour": 20,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.635392,
+   "lng": 77.218401,
+   "date": "2026-04-22",
+   "hour": 18,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.621919,
+   "lng": 77.224728,
+   "date": "2026-06-26",
+   "hour": 6,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.630186,
+   "lng": 77.218531,
+   "date": "2026-08-18",
+   "hour": 21,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.630084,
+   "lng": 77.217716,
+   "date": "2026-08-01",
+   "hour": 23,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.626084,
+   "lng": 77.209325,
+   "date": "2026-02-10",
+   "hour": 13,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.633099,
+   "lng": 77.216686,
+   "date": "2026-01-18",
+   "hour": 5,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.630816,
+   "lng": 77.217318,
+   "date": "2026-09-17",
+   "hour": 21,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.634146,
+   "lng": 77.220434,
+   "date": "2026-07-11",
+   "hour": 18,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.6316,
+   "lng": 77.216222,
+   "date": "2026-03-10",
+   "hour": 9,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.633284,
+   "lng": 77.221713,
+   "date": "2026-01-28",
+   "hour": 19,
+   "type": "theft"
+  },
+  {
+   "lat": 28.632557,
+   "lng": 77.208186,
+   "date": "2026-09-06",
+   "hour": 20,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.571715,
+   "lng": 77.327735,
+   "date": "2026-02-17",
+   "hour": 20,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.569871,
+   "lng": 77.329081,
+   "date": "2026-09-05",
+   "hour": 19,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.569116,
+   "lng": 77.326187,
+   "date": "2026-02-13",
+   "hour": 8,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.575136,
+   "lng": 77.322845,
+   "date": "2026-02-18",
+   "hour": 18,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.565453,
+   "lng": 77.322383,
+   "date": "2026-02-03",
+   "hour": 21,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.569878,
+   "lng": 77.33689,
+   "date": "2026-04-06",
+   "hour": 11,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.574247,
+   "lng": 77.323076,
+   "date": "2026-08-13",
+   "hour": 10,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.568898,
+   "lng": 77.320614,
+   "date": "2026-06-25",
+   "hour": 21,
+   "type": "theft"
+  },
+  {
+   "lat": 28.572789,
+   "lng": 77.335534,
+   "date": "2026-08-24",
+   "hour": 19,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.573261,
+   "lng": 77.328561,
+   "date": "2026-05-27",
+   "hour": 22,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.570953,
+   "lng": 77.327757,
+   "date": "2026-03-18",
+   "hour": 21,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.568623,
+   "lng": 77.327772,
+   "date": "2026-01-18",
+   "hour": 20,
+   "type": "theft"
+  },
+  {
+   "lat": 28.57411,
+   "lng": 77.324016,
+   "date": "2026-09-17",
+   "hour": 5,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.56907,
+   "lng": 77.327435,
+   "date": "2026-03-01",
+   "hour": 8,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.569778,
+   "lng": 77.325016,
+   "date": "2026-08-28",
+   "hour": 22,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.57071,
+   "lng": 77.325881,
+   "date": "2026-05-11",
+   "hour": 0,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.56532,
+   "lng": 77.319928,
+   "date": "2026-06-03",
+   "hour": 18,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.57144,
+   "lng": 77.326499,
+   "date": "2026-06-08",
+   "hour": 23,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.569568,
+   "lng": 77.329578,
+   "date": "2026-10-14",
+   "hour": 20,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.570476,
+   "lng": 77.328796,
+   "date": "2026-07-02",
+   "hour": 4,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.582001,
+   "lng": 77.317958,
+   "date": "2026-06-11",
+   "hour": 12,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.568698,
+   "lng": 77.330552,
+   "date": "2026-05-02",
+   "hour": 20,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.570794,
+   "lng": 77.3263,
+   "date": "2026-08-07",
+   "hour": 13,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.57222,
+   "lng": 77.334011,
+   "date": "2026-01-27",
+   "hour": 15,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.562954,
+   "lng": 77.325496,
+   "date": "2026-09-25",
+   "hour": 22,
+   "type": "theft"
+  },
+  {
+   "lat": 28.578373,
+   "lng": 77.324604,
+   "date": "2026-10-11",
+   "hour": 17,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.569546,
+   "lng": 77.325413,
+   "date": "2026-03-25",
+   "hour": 7,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.574206,
+   "lng": 77.329062,
+   "date": "2026-10-07",
+   "hour": 0,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.568814,
+   "lng": 77.325619,
+   "date": "2026-09-07",
+   "hour": 21,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.576579,
+   "lng": 77.333628,
+   "date": "2026-06-12",
+   "hour": 23,
+   "type": "theft"
+  },
+  {
+   "lat": 28.569985,
+   "lng": 77.24976,
+   "date": "2026-10-18",
+   "hour": 20,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.569131,
+   "lng": 77.239591,
+   "date": "2026-10-02",
+   "hour": 21,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.568576,
+   "lng": 77.241168,
+   "date": "2026-03-09",
+   "hour": 23,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.567452,
+   "lng": 77.242546,
+   "date": "2026-03-22",
+   "hour": 2,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.572496,
+   "lng": 77.244306,
+   "date": "2026-04-17",
+   "hour": 13,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.566848,
+   "lng": 77.243943,
+   "date": "2026-06-05",
+   "hour": 20,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.566777,
+   "lng": 77.24469,
+   "date": "2026-05-11",
+   "hour": 21,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.573037,
+   "lng": 77.247159,
+   "date": "2026-07-07",
+   "hour": 21,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.565059,
+   "lng": 77.243403,
+   "date": "2026-06-06",
+   "hour": 18,
+   "type": "theft"
+  },
+  {
+   "lat": 28.563401,
+   "lng": 77.248981,
+   "date": "2026-04-10",
+   "hour": 19,
+   "type": "theft"
+  },
+  {
+   "lat": 28.55834,
+   "lng": 77.244524,
+   "date": "2026-04-24",
+   "hour": 4,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.566205,
+   "lng": 77.239162,
+   "date": "2026-02-06",
+   "hour": 5,
+   "type": "theft"
+  },
+  {
+   "lat": 28.570169,
+   "lng": 77.242999,
+   "date": "2026-01-18",
+   "hour": 23,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.570034,
+   "lng": 77.243459,
+   "date": "2026-09-15",
+   "hour": 22,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.568357,
+   "lng": 77.240621,
+   "date": "2026-09-08",
+   "hour": 23,
+   "type": "theft"
+  },
+  {
+   "lat": 28.571562,
+   "lng": 77.244675,
+   "date": "2026-09-11",
+   "hour": 21,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.569378,
+   "lng": 77.239605,
+   "date": "2026-09-27",
+   "hour": 18,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.572923,
+   "lng": 77.246596,
+   "date": "2026-01-03",
+   "hour": 18,
+   "type": "theft"
+  },
+  {
+   "lat": 28.564814,
+   "lng": 77.239038,
+   "date": "2026-10-15",
+   "hour": 19,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.567886,
+   "lng": 77.243539,
+   "date": "2026-02-13",
+   "hour": 1,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.6475,
+   "lng": 77.370011,
+   "date": "2026-02-25",
+   "hour": 19,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.641355,
+   "lng": 77.378461,
+   "date": "2026-03-10",
+   "hour": 23,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.644497,
+   "lng": 77.365139,
+   "date": "2026-07-08",
+   "hour": 18,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.642745,
+   "lng": 77.366956,
+   "date": "2026-08-07",
+   "hour": 21,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.642105,
+   "lng": 77.368656,
+   "date": "2026-08-07",
+   "hour": 14,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.644249,
+   "lng": 77.37642,
+   "date": "2026-09-11",
+   "hour": 8,
+   "type": "theft"
+  },
+  {
+   "lat": 28.640634,
+   "lng": 77.377541,
+   "date": "2026-09-06",
+   "hour": 23,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.640175,
+   "lng": 77.365486,
+   "date": "2026-09-06",
+   "hour": 16,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.637628,
+   "lng": 77.375068,
+   "date": "2026-01-08",
+   "hour": 4,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.645572,
+   "lng": 77.37422,
+   "date": "2026-06-03",
+   "hour": 7,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.646885,
+   "lng": 77.36659,
+   "date": "2026-09-04",
+   "hour": 22,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.649969,
+   "lng": 77.365394,
+   "date": "2026-08-27",
+   "hour": 23,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.657992,
+   "lng": 77.366662,
+   "date": "2026-08-02",
+   "hour": 9,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.650636,
+   "lng": 77.369743,
+   "date": "2026-10-21",
+   "hour": 0,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.64523,
+   "lng": 77.369236,
+   "date": "2026-09-21",
+   "hour": 18,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.643195,
+   "lng": 77.368643,
+   "date": "2026-04-18",
+   "hour": 14,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.645697,
+   "lng": 77.369801,
+   "date": "2026-02-15",
+   "hour": 20,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.646293,
+   "lng": 77.370515,
+   "date": "2026-06-13",
+   "hour": 8,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.646775,
+   "lng": 77.369945,
+   "date": "2026-03-19",
+   "hour": 22,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.643343,
+   "lng": 77.361343,
+   "date": "2026-06-06",
+   "hour": 17,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.647426,
+   "lng": 77.370525,
+   "date": "2026-08-21",
+   "hour": 15,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.649838,
+   "lng": 77.372021,
+   "date": "2026-10-01",
+   "hour": 20,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.647368,
+   "lng": 77.368921,
+   "date": "2026-10-22",
+   "hour": 19,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.648087,
+   "lng": 77.369657,
+   "date": "2026-01-11",
+   "hour": 23,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.646341,
+   "lng": 77.377916,
+   "date": "2026-08-25",
+   "hour": 23,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.482696,
+   "lng": 77.090937,
+   "date": "2026-02-05",
+   "hour": 0,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.494965,
+   "lng": 77.092045,
+   "date": "2026-08-20",
+   "hour": 9,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.491187,
+   "lng": 77.09059,
+   "date": "2026-02-04",
+   "hour": 6,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.493827,
+   "lng": 77.090174,
+   "date": "2026-05-15",
+   "hour": 21,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.492541,
+   "lng": 77.090765,
+   "date": "2026-05-28",
+   "hour": 10,
+   "type": "stalking"
+  },
+  {
+   "lat": 28.495285,
+   "lng": 77.090107,
+   "date": "2026-05-23",
+   "hour": 23,
+   "type": "theft"
+  },
+  {
+   "lat": 28.493849,
+   "lng": 77.091552,
+   "date": "2026-02-08",
+   "hour": 14,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.49587,
+   "lng": 77.092632,
+   "date": "2026-09-10",
+   "hour": 22,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.488728,
+   "lng": 77.099136,
+   "date": "2026-08-08",
+   "hour": 3,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.495134,
+   "lng": 77.089426,
+   "date": "2026-03-28",
+   "hour": 16,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.493904,
+   "lng": 77.087561,
+   "date": "2026-01-20",
+   "hour": 10,
+   "type": "harassment"
+  },
+  {
+   "lat": 28.487851,
+   "lng": 77.085674,
+   "date": "2026-07-08",
+   "hour": 23,
+   "type": "poorly lit street"
+  },
+  {
+   "lat": 28.48346,
+   "lng": 77.088102,
+   "date": "2026-10-17",
+   "hour": 12,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.502313,
+   "lng": 77.089708,
+   "date": "2026-09-14",
+   "hour": 14,
+   "type": "eve-teasing"
+  },
+  {
+   "lat": 28.485408,
+   "lng": 77.084741,
+   "date": "2026-07-12",
+   "hour": 22,
+   "type": "harassment"
+  }
+ ]
+}

@@ -64,8 +64,8 @@ object AlarmPlayer {
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "SafeHer alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Someone nearby pressed SOS, or is under duress. Rings even in silent mode."
+            NotificationChannel(CHANNEL, Lang.s(context, R.string.ch_alerts), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = Lang.s(context, R.string.ch_alerts_d)
                 setSound(soundUri(context), alarmAttributes)
                 enableVibration(true)
                 vibrationPattern = VIBRATION
@@ -74,8 +74,8 @@ object AlarmPlayer {
             },
         )
         nm.createNotificationChannel(
-            NotificationChannel(QUIET_CHANNEL, "Alert updates", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Quiet updates, e.g. \"She is safe, alert cancelled\""
+            NotificationChannel(QUIET_CHANNEL, Lang.s(context, R.string.ch_updates), NotificationManager.IMPORTANCE_LOW).apply {
+                description = Lang.s(context, R.string.ch_updates_d)
                 setSound(null, null)
                 enableVibration(false)
             },

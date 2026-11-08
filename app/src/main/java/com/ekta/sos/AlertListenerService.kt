@@ -299,7 +299,7 @@ class AlertListenerService : Service() {
     /** Something arrived over Bluetooth / Wi-Fi Direct from a nearby Ekta phone. */
     private fun onMeshMessage(msg: MeshMessage) {
         when (msg.type) {
-            MeshMessage.TYPE_ACK -> SosSession.onAck(msg)
+            MeshMessage.TYPE_ACK -> SosSession.onAck(this, msg)
             MeshMessage.TYPE_STATUS -> {
                 if (msg.sender == SosRepository.deviceId(this)) return
                 Gateway.considerStatus(this, msg) // put it online if we have internet
@@ -362,13 +362,13 @@ class AlertListenerService : Service() {
         )
         val n = NotificationCompat.Builder(this, AlarmPlayer.CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sos)
-            .setContentTitle(if (duress) "DURESS: she was forced to cancel. Do NOT call her phone." else "SOS nearby!")
+            .setContentTitle(if (duress) Lang.s(this, R.string.n_duress_title) else Lang.s(this, R.string.n_sos_title))
             .setContentText(
                 when {
-                    duress -> "Her alert is still active. Tap to see where she is."
-                    veryClose -> "Someone very close to you needs help. Tap to see where."
-                    distance >= 0 -> "Someone ${distance.toInt()} m from you needs help. Tap to see where."
-                    else -> "Someone near you needs help. Tap to see where."
+                    duress -> Lang.s(this, R.string.n_duress_text)
+                    veryClose -> Lang.s(this, R.string.n_very_close)
+                    distance >= 0 -> Lang.s(this, R.string.n_distance, distance.toInt())
+                    else -> Lang.s(this, R.string.n_near)
                 },
             )
             .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -378,7 +378,7 @@ class AlertListenerService : Service() {
             .setContentIntent(open)
             // Shows the alert page over the lock screen / when the screen is off.
             .setFullScreenIntent(fullScreen, true)
-            .addAction(0, "Stop sound", stopSound)
+            .addAction(0, Lang.s(this, R.string.n_stop_sound), stopSound)
             .setAutoCancel(false) // stays (with "Stop sound") until the page is dismissed
             .build()
         nm.notify(notifyId, n)
@@ -401,8 +401,8 @@ class AlertListenerService : Service() {
     private fun showSafeNotification(id: String) {
         val n = NotificationCompat.Builder(this, AlarmPlayer.QUIET_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sos)
-            .setContentTitle("She is safe, alert cancelled")
-            .setContentText("She cancelled her SOS with her PIN. Thank you for being ready to help.")
+            .setContentTitle(Lang.s(this, R.string.n_safe_title))
+            .setContentText(Lang.s(this, R.string.n_safe_text))
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setSilent(true)
             .setAutoCancel(true)
@@ -416,8 +416,8 @@ class AlertListenerService : Service() {
         )
         return NotificationCompat.Builder(this, ONGOING_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sos)
-            .setContentTitle("Ekta is listening")
-            .setContentText("You'll be alerted if someone within 500 m needs help, even with no network.")
+            .setContentTitle(Lang.s(this, R.string.n_listening_title))
+            .setContentText(Lang.s(this, R.string.n_listening_text, ALERT_RADIUS_METERS.toInt()))
             .setOngoing(true)
             .setContentIntent(open)
             .build()
@@ -444,11 +444,11 @@ class AlertListenerService : Service() {
         fun createChannels(context: Context) {
             val nm = context.getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(
-                NotificationChannel(ONGOING_CHANNEL, "Listening status", NotificationManager.IMPORTANCE_MIN),
+                NotificationChannel(ONGOING_CHANNEL, Lang.s(context, R.string.ch_listening), NotificationManager.IMPORTANCE_MIN),
             )
             nm.createNotificationChannel(
-                NotificationChannel(RELAY_CHANNEL, "Relayed SOS", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "When your phone passed someone's offline SOS to the internet"
+                NotificationChannel(RELAY_CHANNEL, Lang.s(context, R.string.ch_relayed), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = Lang.s(context, R.string.ch_relayed_d)
                 },
             )
             AlarmPlayer.createChannels(context) // "safeher_alerts" + quiet updates

@@ -3,7 +3,7 @@
 End-to-end test for Ekta SOS on an Android emulator against the real Firebase project.
 
 Each round: fresh install -> setup through the real permission popups -> SOS from the app
-(real nearby alert + real SMS, demo 112 call + demo committee SMS) -> PIN cancel (wrong / normal / duress) -> alerts from
+(real nearby alert + real SMS, demo 112 call) -> PIN cancel (wrong / normal / duress) -> alerts from
 fake nearby/far phones open the full-screen page -> locked screen -> restart.
 
 Usage: python3 tests/e2e.py [rounds]
@@ -581,7 +581,6 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("SOS active page shown", screen_has("CANCEL ALERT"))
     check("112 call shown as DEMO", screen_has("Calling 112") and screen_has("DEMO · NO REAL CALL"))
     check("no real phone call placed", not in_phone_call())
-    check("women's committee shown as DEMO", screen_has("DEMO · not actually sent"))
     sms = wait_sms("SOS from", sos_before)
     check("REAL SMS with live location sent to contact", sms is not None, (sms or "none")[:70])
     if sms:
@@ -654,8 +653,8 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("safe-now + normal PIN → contact told 'is safe, alert cancelled'",
           wait_sms("is safe, alert cancelled", safe2) is not None)
     demo = adb("logcat", "-d", "-s", "EktaDemo")
-    check("committee + police test number informed (DEMO, not sent)",
-          "women's committee" in demo and "police test number" in demo and "is safe, alert cancelled" in demo)
+    check("police test number informed (DEMO, not sent)",
+          "police test number" in demo and "is safe, alert cancelled" in demo)
     check("duress tracking stopped after real cancel", not screen_has("CANCEL ALERT", timeout=2))
     # Settings → I'm safe now with nothing running looks exactly the same (gives nothing away)
     wait_until(lambda: screen_has("press for help", timeout=2), 10)

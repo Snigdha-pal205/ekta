@@ -1,0 +1,6 @@
+{
+  "_note": "Typical service hours (24 h). Delhi Metro runs about 5:30 AM to 11:30 PM; city buses about 5 AM to 11 PM.",
+  "bus": [5, 23],
+  "metro": [6, 23],
+  "auto": [0, 24]
+}
