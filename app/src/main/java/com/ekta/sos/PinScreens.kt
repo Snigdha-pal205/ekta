@@ -33,6 +33,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -232,9 +233,12 @@ fun SettingsScreen(
     onBack: (() -> Unit)?,
     onFixPermissions: (() -> Unit)? = null,
     contactName: String? = null,
+    account: String? = null,
+    onLogout: (() -> Unit)? = null,
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val lang = Lang.currentOption(ctx)
+    var askLogout by remember { mutableStateOf(false) }
     val missing = remember { AlertPermissions.missing(ctx).size }
     val version = remember {
         try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "" } catch (_: Exception) { "" }
@@ -276,6 +280,14 @@ fun SettingsScreen(
                 warn = missing > 0, onClick = onFixPermissions,
             )
 
+            if (onLogout != null) {
+                SettingsSection(stringResource(R.string.sec_account))
+                SettingsRow(
+                    androidx.compose.material.icons.Icons.AutoMirrored.Filled.Logout, stringResource(R.string.logout),
+                    account ?: "", onClick = { askLogout = true },
+                )
+            }
+
             SettingsSection(stringResource(R.string.sec_about))
             Row(
                 Modifier.fillMaxWidth().background(Coal, Round).border(1.dp, Line, Round).padding(16.dp),
@@ -295,6 +307,16 @@ fun SettingsScreen(
                 }
             }
             Spacer(Modifier.height(20.dp))
+        }
+    }
+    if (askLogout && onLogout != null) androidx.compose.ui.window.Dialog(onDismissRequest = { askLogout = false }) {
+        EktaDialogCard {
+            Text(stringResource(R.string.logout_title), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Bone)
+            Text(stringResource(R.string.logout_body), fontSize = 15.sp, color = Ash, lineHeight = 21.sp)
+            DialogButtons(
+                cancel = stringResource(R.string.cancel), onCancel = { askLogout = false },
+                ok = stringResource(R.string.logout), okEnabled = true, onOk = { askLogout = false; onLogout() },
+            )
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.ekta.sos
 
+import kotlinx.coroutines.launch
 import android.content.Context
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -87,6 +88,17 @@ class MainActivity : ComponentActivity() {
             var showSettings by rememberSaveable { mutableStateOf(false) }
             var showLanguage by rememberSaveable { mutableStateOf(false) }
             var tab by rememberSaveable { mutableStateOf(EktaTab.SOS) }
+            var signedIn by remember { mutableStateOf(Account.isSignedIn(this)) }
+            var account by remember { mutableStateOf(Account.who(this)) }
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            fun logOut() {
+                scope.launch {
+                    AlertListenerService.stop(this@MainActivity)
+                    Account.logOut(this@MainActivity)
+                    showSettings = false; tab = EktaTab.SOS
+                    account = null; signedIn = false
+                }
+            }
             var pinMessage by remember { mutableStateOf<String?>(null) }
             var showCancelled by remember { mutableStateOf(false) }
             var laterKeys by remember { mutableStateOf(setOf<String>()) } // pop-ups she put off this time
@@ -252,12 +264,25 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val ready = setupDone && hasLocation()
+            val ready = signedIn && setupDone && hasLocation()
             LaunchedEffect(ready, tick) {
                 if (ready) AlertListenerService.start(this@MainActivity)
             }
 
-            if (!ready) {
+            if (!signedIn) {
+                // Login comes first: nothing else opens until she is logged in.
+                if (showLanguage) {
+                    androidx.activity.compose.BackHandler { showLanguage = false }
+                    LanguageScreen(
+                        current = Lang.current(this),
+                        onPick = { tag -> showLanguage = false; if (tag != Lang.current(this)) Lang.set(this, tag) },
+                        onBack = { showLanguage = false },
+                    )
+                } else LoginScreen(
+                    onLanguage = { showLanguage = true },
+                    onDone = { account = Account.who(this); signedIn = true },
+                )
+            } else if (!ready) {
                 SetupScreen(
                     status = SetupStatus(
                         location = hasLocation(),
@@ -317,6 +342,8 @@ class MainActivity : ComponentActivity() {
                     onLanguage = { showLanguage = true },
                     onBack = { showSettings = false },
                     contactName = contact?.name,
+                    account = account,
+                    onLogout = if (sos.active) null else ::logOut,
                 )
             } else if (showPinPad && sos.active && !sos.hidden) {
                 androidx.activity.compose.BackHandler { showPinPad = false; pinMessage = null }
@@ -349,6 +376,8 @@ class MainActivity : ComponentActivity() {
                                 onBack = null,
                                 onFixPermissions = { laterKeys = emptySet(); resumeTick++ },
                                 contactName = contact?.name,
+                                account = account,
+                                onLogout = ::logOut,
                             )
                         }
                     }

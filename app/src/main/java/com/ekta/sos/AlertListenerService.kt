@@ -432,6 +432,7 @@ class AlertListenerService : Service() {
         const val RELAY_CHANNEL = "relay"
 
         fun start(context: Context) {
+            if (!Account.isSignedIn(context)) return // logged out: Ekta stays off
             try {
                 ContextCompat.startForegroundService(
                     context, Intent(context, AlertListenerService::class.java),
@@ -439,6 +440,10 @@ class AlertListenerService : Service() {
             } catch (_: Exception) {
                 // Background start not allowed; it'll start next time the app is opened.
             }
+        }
+
+        fun stop(context: Context) {
+            context.stopService(Intent(context, AlertListenerService::class.java))
         }
 
         fun createChannels(context: Context) {
