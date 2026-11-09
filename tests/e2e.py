@@ -108,7 +108,7 @@ EMULATOR = os.path.expanduser("~/Library/Android/sdk/emulator/emulator")
 def start_emulator():
     subprocess.Popen(
         [EMULATOR, "-avd", "ekta_test", "-no-snapshot-load", "-no-snapshot-save", "-no-audio",
-         "-gpu", "swiftshader_indirect", "-dns-server", "8.8.8.8,1.1.1.1"],
+         "-gpu", "host", "-dns-server", "8.8.8.8,1.1.1.1"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
 
@@ -246,8 +246,8 @@ def wake_and_unlock():
     time.sleep(1)
 
 
-NORMAL_PIN = "1234"
-DURESS_PIN = "9999"
+NORMAL_PIN = "1111"
+DURESS_PIN = "1234"
 
 
 def sha(x):
@@ -273,6 +273,12 @@ def long_press_sos():
             return True
         time.sleep(2)
     return False
+
+
+def press_sos():
+    """Tap SOS, then wait out the 10-second countdown (there is no Send now button)."""
+    ui_tap("SOS")
+    time.sleep(11)
 
 
 def cancel_with_pin():
@@ -548,7 +554,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     hide_keyboard()
     ui_tap("SAVE")
     time.sleep(2)
-    check("PIN setup dialog shown", screen_has("CANCEL PINS"))
+    check("PIN setup dialog shown", screen_has("Your PINs"))
     for label, value in (("Cancel PIN \\(4 digits\\)", NORMAL_PIN), ("Cancel PIN again", NORMAL_PIN),
                          ("Duress PIN \\(4 digits\\)", DURESS_PIN)):
         ui_tap(label)
@@ -558,7 +564,11 @@ def run_round(n, place, lat, lng, test_live_update=False):
     ui_tap("SAVE PINS")
     time.sleep(2)
     check("PINs saved (hashed, not plain)", pins_saved())
-    check("SOS screen after setup", screen_has("press for help") and screen_has("Test Contact"))
+    home = screen_has("Tap to alert everyone")
+    ui_tap("Contact")  # the bottom-bar tab
+    saved = screen_has("Test Contact")
+    ui_tap("SOS")      # back to the SOS tab
+    check("SOS screen after setup (contact saved)", home and saved and screen_has("Tap to alert everyone"))
     check("listener service running", service_running())
     check("mesh running (Bluetooth service type)", mesh_running())
     check("mesh really started (Nearby accepted, no missing permission)", nearby_ok())
@@ -569,7 +579,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     # 2. Press SOS in the app
     before_docs = len(list_alerts(token()))
     sos_before = len([b for b in sms_inbox() if "SOS from" in b])
-    ui_tap("SOS")
+    press_sos()
     time.sleep(8)
     docs = list_alerts(token())
     mine = [d for d in docs if d["fields"]["senderId"]["stringValue"] == device_id()]
@@ -605,21 +615,21 @@ def run_round(n, place, lat, lng, test_live_update=False):
     safe_before = len([b for b in sms_inbox() if "is safe, alert cancelled" in b])
     enter_pin(NORMAL_PIN)
     check("normal PIN → 'Alert cancelled' screen", screen_has("Alert cancelled", timeout=3))
-    check("normal PIN → back to home screen", screen_has("press for help", timeout=8))
+    check("normal PIN → back to home screen", screen_has("Tap to alert everyone", timeout=8))
     check("normal PIN → server status = cancelled",
           wait_until(lambda: doc_field(my_id, "status") == "cancelled", 30))
     check("normal PIN → 'safe' SMS to contact", wait_sms("is safe, alert cancelled", safe_before) is not None)
 
     # PIN: duress → looks cancelled, keeps running silently
     open_app()
-    ui_tap("SOS")
+    press_sos()
     time.sleep(8)
     duress_id = last_alert_id()
     duress_sms = len([b for b in sms_inbox() if "EKTA DURESS:" in b])
     ui_tap("CANCEL ALERT")
     enter_pin(DURESS_PIN)
     check("duress PIN → same 'Alert cancelled' screen", screen_has("Alert cancelled", timeout=3))
-    check("duress PIN → back to normal home screen", screen_has("press for help", timeout=8))
+    check("duress PIN → back to normal home screen", screen_has("Tap to alert everyone", timeout=8))
     check("duress PIN → no SOS page / 112 call visible",
           not screen_has("CANCEL ALERT", timeout=2) and not screen_has("Calling 112", timeout=1))
     check("duress PIN → no duress notification on her phone", not her_notifications_mention_sos())
@@ -657,12 +667,14 @@ def run_round(n, place, lat, lng, test_live_update=False):
           "police test number" in demo and "is safe, alert cancelled" in demo)
     check("duress tracking stopped after real cancel", not screen_has("CANCEL ALERT", timeout=2))
     # Settings → I'm safe now with nothing running looks exactly the same (gives nothing away)
-    wait_until(lambda: screen_has("press for help", timeout=2), 10)
+    wait_until(lambda: screen_has("Tap to alert everyone", timeout=2), 10)
     ui_tap("SETTINGS")
     ui_tap("I'M SAFE NOW")
     enter_pin(NORMAL_PIN)
     check("Settings → I'm safe now (no alert) → same 'Alert cancelled' screen", screen_has("Alert cancelled", timeout=3))
-    wait_until(lambda: screen_has("press for help", timeout=2), 10)
+    time.sleep(3)
+    ui_tap("SOS")  # back to the SOS tab
+    wait_until(lambda: screen_has("Tap to alert everyone", timeout=2), 10)
 
     # 2b. Exact location: follows her when she moves, says how exact it is, GPS off handled
     def her_dist(doc_id, t_lat, t_lng):
@@ -671,7 +683,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
 
     open_app()
     acc_before = len([b for b in sms_inbox() if "accurate to " in b])
-    ui_tap("SOS")
+    press_sos()
     time.sleep(8)
     lid = last_alert_id()
     check("location: her SOS page shows her exact location (±m, live)",
@@ -692,13 +704,13 @@ def run_round(n, place, lat, lng, test_live_update=False):
     check("location: cancel still works while tracking",
           wait_until(lambda: doc_field(lid, "status") == "cancelled", 30))
     set_location(lat, lng)
-    wait_until(lambda: screen_has("press for help", timeout=2), 10)
+    wait_until(lambda: screen_has("Tap to alert everyone", timeout=2), 10)
 
     # GPS switched off, then she presses SOS
     adb("shell", "cmd", "location", "set-location-enabled", "false")
     time.sleep(2)
     open_app()
-    ui_tap("SOS")
+    press_sos()
     time.sleep(4)
     check("location: GPS off → 'Turn on location' dialog pops up",
           "com.ekta.sos/.MainActivity" not in top_activity() or screen_has("location", timeout=3))
@@ -717,7 +729,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     ui_tap("CANCEL ALERT")
     enter_pin(NORMAL_PIN)
     wait_until(lambda: doc_field(gid, "status") == "cancelled", 30)
-    wait_until(lambda: screen_has("press for help", timeout=2), 10)
+    wait_until(lambda: screen_has("Tap to alert everyone", timeout=2), 10)
 
     # 3. Alerts from other phones at various distances → full-screen page
     def expect(label, a_lat, a_lng, should_ring, **kw):
@@ -752,7 +764,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     sos_sms = count("SOS from")
     airplane(True)
     open_app()
-    ui_tap("SOS")
+    press_sos()
     time.sleep(6)
     check("offline: 112 waits for signal", screen_has("Waiting for signal"))
     check("offline: SMS queued until signal", screen_has("no signal · will send automatically"))
@@ -769,7 +781,7 @@ def run_round(n, place, lat, lng, test_live_update=False):
     # 6. Offline, and a nearby gateway confirms it texted her contact → no duplicate
     sos_sms = count("SOS from")
     airplane(True)
-    ui_tap("SOS")
+    press_sos()
     time.sleep(6)
     alert_id = last_alert_id()
     inject([{"t": "ack", "id": alert_id, "h": 1, "g": "gateway-phone", "sms": "sent"}])
@@ -999,6 +1011,9 @@ def main():
         name, lat, lng = PLACES[i % len(PLACES)]
         run_round(i + 1, name, lat, lng, test_live_update=(i == 0))
     clear_alerts()
+    # Leave the emulator usable for watching the app: animations back on.
+    for k in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"):
+        adb("shell", "settings", "put", "global", k, "1")
     passed = sum(ok for _, ok in results)
     log(f"\n=== {passed}/{len(results)} checks passed ===")
     for name, ok in results:

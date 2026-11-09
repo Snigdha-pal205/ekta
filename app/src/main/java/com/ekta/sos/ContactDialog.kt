@@ -23,6 +23,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -49,48 +53,29 @@ fun ContactDialog(
     val valid = number.count { it.isDigit() } >= 3
 
     Dialog(onDismissRequest = onDismiss) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .background(SkyBottom)
-                .border(2.dp, Ink)
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(stringResource(R.string.settings_contact), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Ink, letterSpacing = 1.sp)
-            Text(
-                stringResource(R.string.contact_intro),
-                fontFamily = Mono, fontSize = 12.sp, color = Ink,
-            )
+        EktaDialogCard {
+            Text(stringResource(R.string.contact_title), fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Bone)
+            Text(stringResource(R.string.contact_intro), fontSize = 14.sp, color = Ash, lineHeight = 20.sp)
             Field(stringResource(R.string.contact_my_name), myName) { myName = it }
-            Text(
-                stringResource(R.string.contact_pick),
-                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
-                modifier = Modifier
-                    .background(Lime)
-                    .border(2.dp, Ink)
-                    .clickable(onClick = onPickFromContacts)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
-            Text(stringResource(R.string.contact_or_type), fontFamily = Mono, fontSize = 12.sp, color = Ink)
+            Row(
+                Modifier.fillMaxWidth().clip(FieldShape).background(Coal2, FieldShape).border(1.dp, Crimson, FieldShape)
+                    .clickable(onClick = onPickFromContacts).padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.Icon(
+                    androidx.compose.material.icons.Icons.Filled.Contacts, contentDescription = null, tint = Crimson,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(R.string.contact_pick_soft), fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Bone)
+            }
+            Text(stringResource(R.string.contact_or_type), fontSize = 13.sp, color = Ash)
             Field(stringResource(R.string.contact_name), name) { name = it }
             Field(stringResource(R.string.contact_phone), number, KeyboardType.Phone) { number = it }
-            Spacer(Modifier.height(4.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.cancel), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
-                    modifier = Modifier.clickable(onClick = onDismiss).padding(12.dp),
-                )
-                Text(
-                    stringResource(R.string.save), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 14.sp,
-                    color = if (valid) Ink else Ink.copy(alpha = 0.35f),
-                    modifier = Modifier
-                        .background(if (valid) Lime else Color.Transparent)
-                        .border(2.dp, if (valid) Ink else Ink.copy(alpha = 0.35f))
-                        .clickable(enabled = valid) { onSave(myName.trim(), name.trim(), number.trim()) }
-                        .padding(horizontal = 18.dp, vertical = 10.dp),
-                )
-            }
+            DialogButtons(
+                stringResource(R.string.cancel_soft), onDismiss,
+                stringResource(R.string.save_soft), valid,
+            ) { onSave(myName.trim(), name.trim(), number.trim()) }
         }
     }
 }
@@ -100,15 +85,11 @@ private fun Field(label: String, value: String, type: KeyboardType = KeyboardTyp
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
-        label = { Text(label, fontFamily = Mono) },
+        label = { Text(label) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = type),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Ink, unfocusedBorderColor = Ink,
-            focusedLabelColor = Ink, unfocusedLabelColor = Ink,
-            focusedContainerColor = Color.White, unfocusedContainerColor = Color.White,
-            focusedTextColor = Ink, unfocusedTextColor = Ink, cursorColor = Ink,
-        ),
+        shape = FieldShape,
+        colors = ektaFieldColors(),
         modifier = Modifier.fillMaxWidth(),
     )
 }

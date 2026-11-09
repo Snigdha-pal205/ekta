@@ -19,6 +19,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -35,37 +37,33 @@ fun LanguageScreen(current: String, onPick: (String) -> Unit, onBack: () -> Unit
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Spacer(Modifier.height(70.dp))
-            Text(stringResource(R.string.language_title), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 24.sp, color = Ink, letterSpacing = 2.sp)
-            Text(stringResource(R.string.language_hint), fontSize = 13.sp, color = Ink)
+            Spacer(Modifier.height(12.dp))
+            BackLink(onBack)
+            Text(stringResource(R.string.set_language) + if (current != "en") " · Language" else "", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = Bone)
+            Text(stringResource(R.string.language_hint), fontSize = 15.sp, color = Ash)
             Spacer(Modifier.height(6.dp))
             Lang.options.forEach { o ->
                 val selected = o.tag == current
                 Row(
                     Modifier
-                        .width(300.dp)
-                        .background(if (selected) Lime else Color.White)
-                        .border(2.dp, Ink)
+                        .fillMaxWidth()
+                        .clip(Round)
+                        .background(if (selected) Blood else Coal, Round)
+                        .border(1.dp, if (selected) Crimson else Line, Round)
                         .clickable { onPick(o.tag) }
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(o.native, fontWeight = FontWeight.Black, fontSize = 19.sp, color = Ink)
-                        if (o.native != o.english) Text(o.english, fontSize = 12.sp, color = Ink.copy(alpha = 0.7f))
+                        Text(o.native, fontWeight = FontWeight.Bold, fontSize = 19.sp, color = Bone)
+                        if (o.native != o.english) Text(o.english, fontSize = 13.sp, color = if (selected) Bone.copy(alpha = 0.8f) else Ash)
                     }
-                    if (selected) Text("✓", fontWeight = FontWeight.Black, fontSize = 22.sp, color = Ink)
+                    if (selected) Text("✓", fontWeight = FontWeight.Black, fontSize = 22.sp, color = Bone)
                 }
             }
-            Text(
-                stringResource(R.string.back),
-                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
-                modifier = Modifier.clickable(onClick = onBack).padding(14.dp),
-            )
             Spacer(Modifier.height(20.dp))
         }
     }

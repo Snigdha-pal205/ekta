@@ -36,7 +36,7 @@ data class SetupStatus(
 @Composable
 fun SetupScreen(status: SetupStatus, message: String?, onTurnOn: () -> Unit) {
     fun s(ok: Boolean) = if (ok) Step.DONE else Step.IDLE
-    val r = ALERT_RADIUS_METERS.toInt()
+    val r = stringResource(R.string.radius_label)
 
     IllustratedBackground(forest = false) {
         Column(
@@ -49,11 +49,11 @@ fun SetupScreen(status: SetupStatus, message: String?, onTurnOn: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(70.dp))
-            WobblyLogo("EKTA")
+            BrandMark(30f)
             Spacer(Modifier.height(10.dp))
             Text(
                 stringResource(R.string.setup_intro),
-                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Ink,
+                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Bone,
             )
             Spacer(Modifier.height(24.dp))
 
@@ -75,13 +75,13 @@ fun SetupScreen(status: SetupStatus, message: String?, onTurnOn: () -> Unit) {
             ChunkyButton(width = 280.dp, height = 76.dp, onClick = onTurnOn) {
                 Text(
                     stringResource(R.string.setup_turn_on), fontFamily = Mono, fontWeight = FontWeight.Black,
-                    fontSize = 17.sp, color = Ink, letterSpacing = 1.sp,
+                    fontSize = 17.sp, color = Bone, letterSpacing = 1.sp,
                 )
             }
             Spacer(Modifier.height(16.dp))
             Text(
                 message ?: stringResource(R.string.setup_help),
-                fontFamily = Mono, fontSize = 12.sp, color = Ink,
+                fontFamily = Mono, fontSize = 12.sp, color = Bone,
                 textAlign = TextAlign.Center, modifier = Modifier.width(290.dp),
             )
             Spacer(Modifier.height(40.dp))

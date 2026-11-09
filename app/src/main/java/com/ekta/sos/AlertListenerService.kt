@@ -32,7 +32,7 @@ import com.google.firebase.firestore.ListenerRegistration
 /**
  * Runs in the background while the app is "on duty". It keeps track of where this
  * phone is, listens for SOS alerts in the surrounding grid cells, and raises a loud
- * full-screen alert for any SOS sent within 500 m. Only the sender's location is ever
+ * full-screen alert for any SOS sent within 1 km. Only the sender's location is ever
  * uploaded; listeners do the distance check locally.
  */
 class AlertListenerService : Service() {
@@ -417,7 +417,7 @@ class AlertListenerService : Service() {
         return NotificationCompat.Builder(this, ONGOING_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sos)
             .setContentTitle(Lang.s(this, R.string.n_listening_title))
-            .setContentText(Lang.s(this, R.string.n_listening_text, ALERT_RADIUS_METERS.toInt()))
+            .setContentText(Lang.s(this, R.string.n_listening_text, Lang.s(this, R.string.radius_label)))
             .setOngoing(true)
             .setContentIntent(open)
             .build()

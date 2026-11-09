@@ -2,6 +2,8 @@ package com.ekta.sos
 
 import android.content.Context
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.annotation.SuppressLint
@@ -59,11 +61,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            // Ekta is always black: white status/navigation bar icons, so the time and battery stay visible
+            statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         val prefs = getSharedPreferences("ekta", MODE_PRIVATE)
 
         if (intent?.getBooleanExtra(EXTRA_OPEN_SETTINGS, false) == true) openSettingsTick++
-        setContent {
+        setContent { com.ekta.sos.EktaTheme {
             val sos by SosSession.state.collectAsState()
             // Bump SETUP_VERSION whenever setup gains a step, so existing users see it once.
             var setupDone by remember {
@@ -80,6 +86,7 @@ class MainActivity : ComponentActivity() {
             // Settings / language stay open when the page is redrawn in a new language.
             var showSettings by rememberSaveable { mutableStateOf(false) }
             var showLanguage by rememberSaveable { mutableStateOf(false) }
+            var tab by rememberSaveable { mutableStateOf(EktaTab.SOS) }
             var pinMessage by remember { mutableStateOf<String?>(null) }
             var showCancelled by remember { mutableStateOf(false) }
             var laterKeys by remember { mutableStateOf(setOf<String>()) } // pop-ups she put off this time
@@ -224,7 +231,7 @@ class MainActivity : ComponentActivity() {
                     AlertListenerService.start(this)
                     askBackground()
                 } else {
-                    setupMessage = getString(R.string.setup_need_location, ALERT_RADIUS_METERS.toInt())
+                    setupMessage = getString(R.string.setup_need_location, getString(R.string.radius_label))
                 }
             }
 
@@ -279,8 +286,8 @@ class MainActivity : ComponentActivity() {
                 // so nobody watching can tell.
                 androidx.activity.compose.BackHandler { safeNowPad = false; pinMessage = null }
                 PinPadScreen(
-                    title = stringResource(R.string.safe_now),
-                    backLabel = stringResource(R.string.back),
+                    title = stringResource(R.string.set_safe),
+                    backLabel = stringResource(R.string.back_link),
                     message = pinMessage,
                     onSubmit = { pin ->
                         when (SosSession.cancelWithPin(this, pin)) {
@@ -309,6 +316,7 @@ class MainActivity : ComponentActivity() {
                     onSafeNow = { pinMessage = null; safeNowPad = true },
                     onLanguage = { showLanguage = true },
                     onBack = { showSettings = false },
+                    contactName = contact?.name,
                 )
             } else if (showPinPad && sos.active && !sos.hidden) {
                 androidx.activity.compose.BackHandler { showPinPad = false; pinMessage = null }
@@ -326,8 +334,29 @@ class MainActivity : ComponentActivity() {
                     },
                     onBack = { showPinPad = false; pinMessage = null },
                 )
+            } else if (tab != EktaTab.SOS && !(sos.active && !sos.hidden)) {
+                // Other tabs, with the bar below. BACK goes to the SOS tab.
+                androidx.activity.compose.BackHandler { tab = EktaTab.SOS }
+                androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                        when (tab) {
+                            EktaTab.SAFE -> com.ekta.sos.safescore.SafeScoreTab()
+                            EktaTab.CONTACT -> ContactTab(contact) { picked = null; showContactDialog = true }
+                            else -> SettingsScreen(
+                                onContact = { picked = null; showContactDialog = true },
+                                onSafeNow = { pinMessage = null; safeNowPad = true },
+                                onLanguage = { showLanguage = true },
+                                onBack = null,
+                                onFixPermissions = { laterKeys = emptySet(); resumeTick++ },
+                                contactName = contact?.name,
+                            )
+                        }
+                    }
+                    EktaNavBar(tab) { tab = it }
+                }
             } else {
                 SosScreen(
+                    bottomBar = { EktaNavBar(tab) { tab = it } },
                     state = sos,
                     contact = contact,
                     onSos = {
@@ -391,7 +420,7 @@ class MainActivity : ComponentActivity() {
             }
             val onMainPage = ready && !showCancelled && !safeNowPad && !showSettings &&
                 !(showPinPad && sos.active && !sos.hidden)
-            if (onMainPage) SettingsGear { showSettings = true }
+            if (onMainPage && sos.active && !sos.hidden) SettingsGear { showSettings = true }
 
             if (showContactDialog) {
                 ContactDialog(
@@ -426,7 +455,7 @@ class MainActivity : ComponentActivity() {
                     onDismiss = { showPinSetup = false },
                 )
             }
-        }
+        }}
     }
 
     private fun readPickedContact(uri: Uri): EmergencyContact? = try {

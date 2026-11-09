@@ -68,13 +68,16 @@ def search(query, name):
     adb("shell", "input", "text", query.replace(" ", "%s"))
     end = time.time() + 20
     while time.time() < end:
-        hits = [(t, x, y) for t, cls, x, y in nodes() if t.startswith("📍 ") and "·" not in t]
-        exact = [h for h in hits if h[0][2:].strip().lower() == name.lower()]
+        ns = nodes()
+        fy = next((y for t, cls, x, y in ns if cls.endswith("EditText")), 0)
+        # suggestions: the text rows under the search box
+        hits = [(t, x, y) for t, cls, x, y in ns if y > fy + 40 and not cls.endswith("EditText") and "·" not in t and t]
+        exact = [h for h in hits if h[0].strip().lower() == name.lower()]
         loose = [h for h in hits if name.lower() in h[0].lower()]
         if exact or loose:
             t, x, y = (exact or loose)[0]
             tap(x, y, after=3)
-            return t[2:].strip()
+            return t.strip()
         time.sleep(1.5)
     return None
 
@@ -148,10 +151,10 @@ def main():
     adb("shell", "am", "force-stop", e2e.PKG)
     e2e.open_app()
     for _ in range(3):
-        if screen_has("press for help", 6):
+        if screen_has("Tap to alert everyone", 6):
             break
         adb("shell", "input", "keyevent", "KEYCODE_BACK")
-    check("Safe Score page opens", ui_tap("KNOW YOUR DESTINATION") and screen_has("Where are you going?", 10))
+    check("Safe Score page opens", ui_tap("Safe Score") and screen_has("Where are you going?", 10))
 
     for query, name, h, ncr in CASES:
         print(f"\n== {name} at {hour_label(h)}", flush=True)

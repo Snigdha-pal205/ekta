@@ -142,8 +142,8 @@ fun PermissionPopup(
         Column(
             Modifier
                 .fillMaxWidth()
-                .background(Color.White)
-                .border(2.dp, Ink)
+                .background(Coal2)
+                .border(1.dp, Line)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -151,38 +151,38 @@ fun PermissionPopup(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     stringResource(R.string.perm_step, done + 1, total),
-                    fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Ink, letterSpacing = 1.sp,
+                    fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Bone, letterSpacing = 1.sp,
                 )
                 Spacer(Modifier.weight(1f))
                 repeat(total) { i ->
                     Box(
                         Modifier
                             .size(10.dp)
-                            .background(if (i <= done) Lime else Color.White, CircleShape)
-                            .border(1.5.dp, Ink, CircleShape),
+                            .background(if (i <= done) Crimson else Coal2, CircleShape)
+                            .border(1.dp, Line, CircleShape),
                     )
                 }
             }
-            Text(item.title, fontWeight = FontWeight.Black, fontSize = 18.sp, color = Ink)
-            Text(item.why, fontSize = 13.sp, color = Ink)
+            Text(item.title, fontWeight = FontWeight.Black, fontSize = 18.sp, color = Bone)
+            Text(item.why, fontSize = 13.sp, color = Bone)
             Column(
-                Modifier.fillMaxWidth().background(SkyBottom.copy(alpha = 0.45f)).padding(8.dp),
+                Modifier.fillMaxWidth().background(Coal2.copy(alpha = 0.45f)).padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 item.steps.forEachIndexed { i, step ->
                     Row(verticalAlignment = Alignment.Top) {
                         Box(
-                            Modifier.size(22.dp).background(Ink, CircleShape),
+                            Modifier.size(22.dp).background(Coal, CircleShape),
                             contentAlignment = Alignment.Center,
-                        ) { Text("${i + 1}", fontWeight = FontWeight.Black, fontSize = 12.sp, color = Color.White) }
-                        Text(step, fontSize = 13.sp, color = Ink, modifier = Modifier.padding(start = 10.dp, top = 1.dp))
+                        ) { Text("${i + 1}", fontWeight = FontWeight.Black, fontSize = 12.sp, color = Bone) }
+                        Text(step, fontSize = 13.sp, color = Bone, modifier = Modifier.padding(start = 10.dp, top = 1.dp))
                     }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     stringResource(R.string.not_now),
-                    fontSize = 13.sp, color = Ink.copy(alpha = 0.7f), textDecoration = TextDecoration.Underline,
+                    fontSize = 13.sp, color = Bone.copy(alpha = 0.7f), textDecoration = TextDecoration.Underline,
                     modifier = Modifier.clickable(onClick = onLater).padding(horizontal = 6.dp, vertical = 12.dp),
                 )
                 Spacer(Modifier.width(10.dp))
@@ -190,11 +190,11 @@ fun PermissionPopup(
                     Modifier
                         .weight(1f)
                         .height(50.dp)
-                        .background(Lime)
-                        .border(2.dp, Ink)
+                        .background(Crimson)
+                        .border(1.dp, Line)
                         .clickable(onClick = onOpenSettings),
                     contentAlignment = Alignment.Center,
-                ) { Text(stringResource(R.string.turn_on), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 18.sp, color = Ink, letterSpacing = 2.sp) }
+                ) { Text(stringResource(R.string.turn_on), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 18.sp, color = Bone, letterSpacing = 2.sp) }
             }
         }
     }

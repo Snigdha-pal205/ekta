@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Ekta" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@color/sky</item>
-        <item name="android:statusBarColor">@color/sky</item>
-        <item name="android:windowLightStatusBar">true</item>
+    <style name="Theme.Ekta" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/night</item>
+        <item name="android:statusBarColor">@color/night</item>
+        <item name="android:navigationBarColor">@color/night</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31" xmlns:tools="http://schemas.android.com/tools">@color/night</item>
     </style>
 </resources>

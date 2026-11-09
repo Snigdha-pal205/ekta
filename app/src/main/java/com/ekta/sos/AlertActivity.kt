@@ -113,10 +113,14 @@ class AlertActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            // Ekta is always black: white status/navigation bar icons, so the time and battery stay visible
+            statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         showOverLockScreen()
         handle(intent)
-        setContent {
+        setContent { com.ekta.sos.EktaTheme {
             val infos by AlertStatus.infos.collectAsState()
             val ringing by AlarmPlayer.ringingFor.collectAsState()
             alert?.let { a ->
@@ -171,7 +175,7 @@ class AlertActivity : ComponentActivity() {
                     )
                 }
             }
-        }
+        }}
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -263,9 +267,9 @@ private fun AlertScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(AlertPink),
+            .background(Night),
     ) {
-        Canvas(Modifier.fillMaxSize()) { drawSky() }
+        Canvas(Modifier.fillMaxSize()) { drawEktaGlow() }
         Column(
             Modifier
                 .fillMaxSize()
@@ -279,22 +283,22 @@ private fun AlertScreen(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .background(Ink)
+                        .background(Coal)
                         .padding(14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
                         stringResource(R.string.duress), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 26.sp,
-                        color = Lime, letterSpacing = 4.sp,
+                        color = Gold, letterSpacing = 4.sp,
                     )
                     Text(
                         stringResource(R.string.duress_forced),
                         fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                        color = Color.White, textAlign = TextAlign.Center,
+                        color = Bone, textAlign = TextAlign.Center,
                     )
                     Text(
                         stringResource(R.string.duress_keeps),
-                        fontFamily = Mono, fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f),
+                        fontFamily = Mono, fontSize = 11.sp, color = Bone.copy(alpha = 0.8f),
                         textAlign = TextAlign.Center,
                     )
                 }
@@ -307,7 +311,7 @@ private fun AlertScreen(
                     for (i in 0..2) {
                         val p = (t + i / 3f) % 1f
                         drawCircle(
-                            Ink.copy(alpha = (1f - p) * 0.8f),
+                            Bone.copy(alpha = (1f - p) * 0.8f),
                             radius = size.minDimension / 2 * (0.35f + 0.65f * p),
                             style = Stroke(width = 3.dp.toPx()),
                         )
@@ -316,10 +320,10 @@ private fun AlertScreen(
                 Box(
                     Modifier
                         .size(86.dp)
-                        .background(Lime, shape = androidx.compose.foundation.shape.CircleShape),
+                        .background(Crimson, shape = androidx.compose.foundation.shape.CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("!", fontSize = 56.sp, fontWeight = FontWeight.Black, color = Ink)
+                    Text("!", fontSize = 56.sp, fontWeight = FontWeight.Black, color = Bone)
                 }
             }
 
@@ -329,12 +333,12 @@ private fun AlertScreen(
             Text(
                 stringResource(R.string.someone_needs_help),
                 fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp,
-                color = Ink, letterSpacing = 1.sp, textAlign = TextAlign.Center,
+                color = Bone, letterSpacing = 1.sp, textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(18.dp))
             Box(
                 Modifier
-                    .background(Ink)
+                    .background(Coal)
                     .padding(horizontal = 18.dp, vertical = 10.dp),
             ) {
                 // Two rough positions can't give an exact gap: if the gap is smaller than
@@ -342,14 +346,14 @@ private fun AlertScreen(
                 val close = alert.distance < 0 || alert.distance <= maxOf(uncertainty, 20.0)
                 Text(
                     if (close) stringResource(R.string.very_close) else stringResource(R.string.m_away, alert.distance.toInt()),
-                    fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Lime,
+                    fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Gold,
                 )
             }
             if (alert.distance >= 0 && alert.distance <= maxOf(uncertainty, 20.0) && uncertainty > 20.0) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     stringResource(R.string.look_around, (Math.ceil(uncertainty / 10.0) * 10).toInt()),
-                    fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
+                    fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Bone,
                     textAlign = TextAlign.Center,
                 )
             }
@@ -371,35 +375,35 @@ private fun AlertScreen(
                     if (accuracy != null && accuracy > 0) append(" · ±${accuracy.toInt()} m")
                     if (ago >= 0) append(" · $agoLabel")
                 },
-                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink,
+                fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Bone,
                 textAlign = TextAlign.Center,
             )
             Text(
                 stringResource(R.string.received_at, DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(alert.at))),
-                fontFamily = Mono, fontSize = 13.sp, color = Ink,
+                fontFamily = Mono, fontSize = 13.sp, color = Bone,
             )
             if (alert.hops >= 0) {
                 Text(
                     if (alert.hops == 0) stringResource(R.string.via_direct)
                     else stringResource(R.string.via_hops, alert.hops),
-                    fontFamily = Mono, fontSize = 11.sp, color = Ink, textAlign = TextAlign.Center,
+                    fontFamily = Mono, fontSize = 11.sp, color = Bone, textAlign = TextAlign.Center,
                 )
             }
 
             Spacer(Modifier.height(26.dp))
             if (ringing) {
-                ChunkyButton(width = 280.dp, height = 54.dp, color = Ink, onClick = onStopSound) {
-                    Text(stringResource(R.string.stop_sound), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Lime, letterSpacing = 2.sp)
+                ChunkyButton(width = 280.dp, height = 54.dp, color = Blood, onClick = onStopSound) {
+                    Text(stringResource(R.string.stop_sound), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 17.sp, color = Bone, letterSpacing = 2.sp)
                 }
                 Spacer(Modifier.height(16.dp))
             }
             ChunkyButton(width = 280.dp, height = 74.dp, onClick = onOpenMap) {
-                Text(stringResource(R.string.show_me_where), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 19.sp, color = Ink, letterSpacing = 1.sp)
-                Text(stringResource(R.string.walking_dirs), fontFamily = Mono, fontSize = 11.sp, color = Ink)
+                Text(stringResource(R.string.show_me_where), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 19.sp, color = Bone, letterSpacing = 1.sp)
+                Text(stringResource(R.string.walking_dirs), fontFamily = Mono, fontSize = 11.sp, color = Bone)
             }
             Spacer(Modifier.height(18.dp))
-            ChunkyButton(width = 280.dp, height = 54.dp, color = Color.White, onClick = onDismiss) {
-                Text(stringResource(R.string.dismiss), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Ink, letterSpacing = 2.sp)
+            ChunkyButton(width = 280.dp, height = 54.dp, color = Coal2, onClick = onDismiss) {
+                Text(stringResource(R.string.dismiss), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Bone, letterSpacing = 2.sp)
             }
             Spacer(Modifier.weight(1.2f))
         }
@@ -412,9 +416,9 @@ private fun CancelledByHer(onDismiss: () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(SkyBottom),
+            .background(Night),
     ) {
-        Canvas(Modifier.fillMaxSize()) { drawSky() }
+        Canvas(Modifier.fillMaxSize()) { drawEktaGlow() }
         Column(
             Modifier
                 .fillMaxSize()
@@ -427,22 +431,22 @@ private fun CancelledByHer(onDismiss: () -> Unit) {
             Box(
                 Modifier
                     .size(96.dp)
-                    .background(Lime, shape = androidx.compose.foundation.shape.CircleShape),
+                    .background(Crimson, shape = androidx.compose.foundation.shape.CircleShape),
                 contentAlignment = Alignment.Center,
-            ) { Text("✓", fontSize = 56.sp, fontWeight = FontWeight.Black, color = Ink) }
+            ) { Text("✓", fontSize = 56.sp, fontWeight = FontWeight.Black, color = Bone) }
             Spacer(Modifier.height(24.dp))
             Text(
                 stringResource(R.string.alert_cancelled_caps), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 22.sp,
-                color = Ink, letterSpacing = 2.sp,
+                color = Bone, letterSpacing = 2.sp,
             )
             Spacer(Modifier.height(10.dp))
             Text(
                 stringResource(R.string.she_is_safe_text),
-                fontFamily = Mono, fontSize = 14.sp, color = Ink, textAlign = TextAlign.Center,
+                fontFamily = Mono, fontSize = 14.sp, color = Bone, textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(36.dp))
-            ChunkyButton(width = 280.dp, height = 60.dp, color = Color.White, onClick = onDismiss) {
-                Text(stringResource(R.string.ok), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 18.sp, color = Ink, letterSpacing = 2.sp)
+            ChunkyButton(width = 280.dp, height = 60.dp, color = Coal2, onClick = onDismiss) {
+                Text(stringResource(R.string.ok), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 18.sp, color = Bone, letterSpacing = 2.sp)
             }
             Spacer(Modifier.weight(1.2f))
         }

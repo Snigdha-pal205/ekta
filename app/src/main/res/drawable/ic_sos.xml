@@ -1,11 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Ekta icon: the rescue grip, three women's arms locked wrist to wrist. Same shapes as Theme.kt EktaMark. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#7DB9F4" android:pathData="M0,0h108v108h-108z" />
-    <path android:fillColor="#111111" android:pathData="M28,34h56v44h-56z" />
-    <path android:fillColor="#E4F25A" android:strokeColor="#111111" android:strokeWidth="3"
-        android:pathData="M22,28h56v44h-56z" />
-    <path android:fillColor="#111111"
-        android:pathData="M48,38h4v16h-4zM48,58h4v4h-4z" />
+    <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z" />
+    <group android:scaleX="0.66" android:scaleY="0.66" android:translateX="21" android:translateY="21">
+        <group android:rotation="0" android:pivotX="50" android:pivotY="50">
+            <path android:fillColor="#00000000" android:strokeColor="#E3141C" android:strokeWidth="13" android:strokeLineCap="round" android:pathData="M40.00,6.68L69.00,56.94" />
+        </group>
+        <group android:rotation="120" android:pivotX="50" android:pivotY="50">
+            <path android:fillColor="#00000000" android:strokeColor="#E3141C" android:strokeWidth="13" android:strokeLineCap="round" android:pathData="M40.00,6.68L69.00,56.94" />
+        </group>
+        <group android:rotation="240" android:pivotX="50" android:pivotY="50">
+            <path android:fillColor="#00000000" android:strokeColor="#E3141C" android:strokeWidth="13" android:strokeLineCap="round" android:pathData="M40.00,6.68L69.00,56.94" />
+        </group>
+        <group android:rotation="0" android:pivotX="50" android:pivotY="50">
+            <path android:fillColor="#00000000" android:strokeColor="#F4F4F4" android:strokeWidth="2.6" android:strokeLineCap="round" android:pathData="M73.50,49.72L60.51,57.22" />
+            <group android:rotation="60.00" android:pivotX="73.25" android:pivotY="64.30">
+                <path android:fillColor="#F4F4F4" android:strokeColor="#000000" android:strokeWidth="1.3" android:pathData="M70.25,55.30h6a5.5,5.5 0 0 1 5.5,5.5v7a5.5,5.5 0 0 1 -5.5,5.5h-6a5.5,5.5 0 0 1 -5.5,-5.5v-7a5.5,5.5 0 0 1 5.5,-5.5z" />
+                <path android:fillColor="#00000000" android:strokeColor="#000000" android:strokeWidth="1.3" android:pathData="M75.25,61.30h6M75.25,67.30h6" />
+                <path android:fillColor="#F4F4F4" android:strokeColor="#000000" android:strokeWidth="1.3" android:pathData="M69.75,54.80m-3.6,0a3.6,3.6 0,1 1,7.2 0a3.6,3.6 0,1 1,-7.2 0" />
+            </group>
+        </group>
+        <group android:rotation="120" android:pivotX="50" android:pivotY="50">
+            <path android:fillColor="#00000000" android:strokeColor="#F4F4F4" android:strokeWidth="2.6" android:strokeLineCap="round" android:pathData="M73.50,49.72L60.51,57.22" />
+            <group android:rotation="60.00" android:pivotX="73.25" android:pivotY="64.30">
+                <path android:fillColor="#F4F4F4" android:strokeColor="#000000" android:strokeWidth="1.3" android:pathData="M70.25,55.30h6a5.5,5.5 0 0 1 5.5,5.5v7a5.5,5.5 0 0 1 -5.5,5.5h-6a5.5,5.5 0 0 1 -5.5,-5.5v-7a5.5,5.5 0 0 1 5.5,-5.5z" />
+                <path android:fillColor="#00000000" android:strokeColor="#000000" android:strokeWidth="1.3" android:pathData="M75.25,61.30h6M75.25,67.30h6" />
+                <path android:fillColor="#F4F4F4" android:strokeColor="#000000" android:strokeWidth="1.3" android:pathData="M69.75,54.80m-3.6,0a3.6,3.6 0,1 1,7.2 0a3.6,3.6 0,1 1,-7.2 0" />
+            </group>
+        </group>
+        <group android:rotation="240" android:pivotX="50" android:pivotY="50">
+            <path android:fillColor="#00000000" android:strokeColor="#F4F4F4" android:strokeWidth="2.6" android:strokeLineCap="round" android:pathData="M73.50,49.72L60.51,57.22" />
+            <group android:rotation="60.00" android:pivotX="73.25" android:pivotY="64.30">
+                <path android:fillColor="#F4F4F4" android:strokeColor="#000000" android:strokeWidth="1.3" android:pathData="M70.25,55.30h6a5.5,5.5 0 0 1 5.5,5.5v7a5.5,5.5 0 0 1 -5.5,5.5h-6a5.5,5.5 0 0 1 -5.5,-5.5v-7a5.5,5.5 0 0 1 5.5,-5.5z" />
+                <path android:fillColor="#00000000" android:strokeColor="#000000" android:strokeWidth="1.3" android:pathData="M75.25,61.30h6M75.25,67.30h6" />
+                <path android:fillColor="#F4F4F4" android:strokeColor="#000000" android:strokeWidth="1.3" android:pathData="M69.75,54.80m-3.6,0a3.6,3.6 0,1 1,7.2 0a3.6,3.6 0,1 1,-7.2 0" />
+            </group>
+        </group>
+    </group>
 </vector>

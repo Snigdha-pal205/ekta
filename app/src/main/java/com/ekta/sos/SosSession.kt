@@ -181,7 +181,7 @@ object SosSession {
                 .addOnSuccessListener {
                     _state.update {
                         if (it.alertId != id) it
-                        else it.copy(upload = Step.DONE, uploadNote = Lang.s(app, R.string.note_online_alerted, ALERT_RADIUS_METERS.toInt()))
+                        else it.copy(upload = Step.DONE, uploadNote = Lang.s(app, R.string.note_online_alerted, Lang.s(app, R.string.radius_label)))
                     }
                 }
                 .addOnFailureListener { e ->

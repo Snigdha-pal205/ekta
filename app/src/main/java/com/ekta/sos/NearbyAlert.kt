@@ -41,7 +41,7 @@ object NearbyAlert {
 
     /** What the recorded voice call would say. */
     fun voiceText(landmark: String?): String =
-        "A woman near you needs help. Location: ${landmark ?: "near you"}. Please help or call 112."
+        "A woman near you needs help. Location: ${landmark ?: "near you"}. Please help her."
 
     /** The SMS: the same words plus a map link to her exact location. */
     fun smsText(landmark: String?, lat: Double, lng: Double): String =
