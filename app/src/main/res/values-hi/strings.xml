@@ -265,4 +265,6 @@
     <string name="sms_gw_duress">EKTA मजबूरी: %1$s को SOS रद्द करने पर मजबूर किया गया और वह अभी भी खतरे में हो सकती है। उसके फ़ोन पर कॉल न करें। आखिरी लोकेशन: %2$s (पास के Ekta फ़ोन से भेजा गया)</string>
     <string name="sms_someone">किसी ने जिसने आपको इमरजेंसी संपर्क बनाया है</string>
     <string name="sms_gw_sos">EKTA SOS: %1$s ने %2$s बजे बिना नेटवर्क वाली जगह से SOS दबाया है और मदद चाहिए। लोकेशन: %3$s (पास के Ekta फ़ोन से भेजा गया)</string>
+    <string name="inc_no_data">इस इलाके का अभी डेटा नहीं</string>
+    <string name="ss_night_cap">दिल्ली / नोएडा में देर रात (रात 11 से सुबह 6): स्कोर 6.5 से ऊपर नहीं जा सकता।</string>
 </resources>

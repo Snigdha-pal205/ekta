@@ -370,6 +370,9 @@ private fun ResultCard(r: SafeScoreResult, onShare: () -> Unit) {
             Column {
                 Text(stringResource(R.string.ss_score, fmt(r.safeScore)), fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 16.sp, color = Ink)
                 Text("${r.level.emoji()} ${r.label} · ${r.message}", fontFamily = Mono, fontSize = 13.sp, color = Ink)
+                if (r.nightCapped) {
+                    Text("🌙 " + stringResource(R.string.ss_night_cap), fontFamily = Mono, fontSize = 11.sp, color = Ink.copy(alpha = 0.75f))
+                }
             }
         }
         ChunkyButton(width = 300.dp, height = 56.dp, onClick = onShare) {

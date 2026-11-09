@@ -265,4 +265,6 @@
     <string name="sms_gw_duress">EKTA મજબૂરી: %1$s ને જબરદસ્તી SOS રદ કરાવ્યું, તે હજી જોખમમાં હોઈ શકે. તેના ફોન પર કૉલ ન કરો. છેલ્લું લોકેશન: %2$s (નજીકના Ekta ફોન દ્વારા મોકલ્યું)</string>
     <string name="sms_someone">જેમણે તમને ઇમરજન્સી સંપર્ક રાખ્યા છે તે કોઈ</string>
     <string name="sms_gw_sos">EKTA SOS: %1$s એ %2$s વાગ્યે નેટવર્ક વગરની જગ્યાએથી SOS દબાવ્યો છે, મદદ જોઈએ છે. લોકેશન: %3$s (નજીકના Ekta ફોન દ્વારા મોકલ્યું)</string>
+    <string name="inc_no_data">આ વિસ્તારનો હજી ડેટા નથી</string>
+    <string name="ss_night_cap">દિલ્હી / નોઇડામાં મોડી રાત (રાત્રે 11 થી સવારે 6): સ્કોર 6.5 થી વધુ ન હોઈ શકે.</string>
 </resources>

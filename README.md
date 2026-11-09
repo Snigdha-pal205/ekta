@@ -66,7 +66,7 @@ Tap **KNOW YOUR DESTINATION**, search a place, and pick an hour. Ekta gives a sc
 | Police | Distance to the nearest police station |
 | Community | Star ratings from other Ekta users for that time of day |
 
-8+ is **Safe**, 6+ **Fairly safe**, 4+ **Be careful**, below 4 **Unsafe**. **SHARE JOURNEY** sends the place and score to anyone, and you can rate the place yourself.
+The score is a weighted average: people around 30%, past incidents 25%, transport 20%, police 15%, community 10%. The things that change with the hour count most. A factor with no data (no incident data for that area, no ratings yet) is shown as "no data" and left out, never counted as safe. 8+ is **Safe**, 7 to 7.9 **Fairly safe**, 5 to 6.9 **Be careful**, below 5 **Unsafe**. **Late night in Delhi / Noida (11 PM to 6 AM) the score never goes above 6.5**, so it always says Be careful or worse. **SHARE JOURNEY** sends the place and score to anyone, and you can rate the place yourself.
 
 Screenshots are from the Android emulator placed at Connaught Place, New Delhi, with test data.
 
@@ -144,6 +144,8 @@ flowchart LR
 | Command | What it checks |
 | --- | --- |
 | `python3 tests/e2e.py 1` | Full end-to-end round on an emulator: setup, SOS, SMS, live location, PINs and duress, distances, lock screen, offline mesh, gateway, push, restart. |
+| `./gradlew :app:testDebugUnitTest` | Safe Score rules: verdict bands, weights, "no data" left out, late-night Delhi/Noida limit. |
+| `python3 tests/safescore_test.py` | Safe Score on the emulator with real map data: places at different hours, labels, late-night limit, no crashes. |
 | `python3 tests/rules_location.py` | Firestore rules for live-location updates. |
 | `./test-alert.sh <lat> <lng>` | Sends a fake SOS from that spot; phones within 500 m should ring. |
 

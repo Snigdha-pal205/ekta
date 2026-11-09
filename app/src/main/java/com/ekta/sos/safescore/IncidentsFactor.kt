@@ -12,6 +12,8 @@ import org.json.JSONObject
  */
 object IncidentsFactor {
     private const val RADIUS_M = 1000f
+    /** No report at any hour within this distance = we have no data here (not "safe"). */
+    private const val COVERAGE_M = 3000f
 
     private data class Incident(val lat: Double, val lng: Double, val hour: Int)
     private var data: List<Incident>? = null
@@ -28,7 +30,14 @@ object IncidentsFactor {
     fun score(context: Context, lat: Double, lng: Double, hour: Int): FactorResult {
         val band = Scoring.band(hour)
         val d = FloatArray(1)
-        val count = load(context).count { inc ->
+        val all = load(context)
+        val covered = all.any { inc ->
+            Location.distanceBetween(lat, lng, inc.lat, inc.lng, d)
+            d[0] <= COVERAGE_M
+        }
+        // Missing data must not count as "perfectly safe": leave it out of the score.
+        if (!covered) return FactorResult(Lang.s(context, R.string.f_incidents), null, Level.YELLOW, Lang.s(context, R.string.inc_no_data))
+        val count = all.count { inc ->
             Scoring.band(inc.hour) == band && run {
                 Location.distanceBetween(lat, lng, inc.lat, inc.lng, d)
                 d[0] <= RADIUS_M

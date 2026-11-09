@@ -265,4 +265,6 @@
     <string name="sms_gw_duress">EKTA DURESS: %1$s was forced to cancel her SOS and may still be in danger. Do NOT call her phone. Last location: %2$s (relayed by a nearby Ekta phone)</string>
     <string name="sms_someone">Someone who saved you as their emergency contact</string>
     <string name="sms_gw_sos">EKTA SOS: %1$s pressed SOS at %2$s in an area with no network and needs help. Location: %3$s (relayed by a nearby Ekta phone)</string>
+    <string name="inc_no_data">no data for this area yet</string>
+    <string name="ss_night_cap">Late night in Delhi / Noida (11 PM to 6 AM): the score can\'t go above 6.5.</string>
 </resources>

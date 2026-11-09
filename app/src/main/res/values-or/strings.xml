@@ -265,4 +265,6 @@
     <string name="sms_gw_duress">EKTA ବିପଦ: %1$s ଙ୍କୁ ଜବରଦସ୍ତି SOS ବାତିଲ କରାଯାଇଛି, ସେ ଏବେ ବି ବିପଦରେ ଥାଇପାରନ୍ତି। ତାଙ୍କ ଫୋନକୁ କଲ କରନ୍ତୁ ନାହିଁ। ଶେଷ ଲୋକେସନ: %2$s (ପାଖ Ekta ଫୋନ ପଠାଇଛି)</string>
     <string name="sms_someone">ଯିଏ ଆପଣଙ୍କୁ ଜରୁରୀ ଯୋଗାଯୋଗ ଭାବେ ରଖିଛନ୍ତି</string>
     <string name="sms_gw_sos">EKTA SOS: %1$s %2$s ରେ ନେଟୱାର୍କ ନଥିବା ସ୍ଥାନରୁ SOS ଦବାଇଛନ୍ତି, ସାହାଯ୍ୟ ଦରକାର। ଲୋକେସନ: %3$s (ପାଖ Ekta ଫୋନ ପଠାଇଛି)</string>
+    <string name="inc_no_data">ଏହି ଅଞ୍ଚଳର ଏପର୍ଯ୍ୟନ୍ତ ତଥ୍ୟ ନାହିଁ</string>
+    <string name="ss_night_cap">ଦିଲ୍ଲୀ / ନୋଏଡାରେ ବିଳମ୍ବିତ ରାତି (ରାତି 11 ରୁ ସକାଳ 6): ସ୍କୋର 6.5 ରୁ ଅଧିକ ହୋଇପାରିବ ନାହିଁ।</string>
 </resources>

@@ -265,4 +265,6 @@
     <string name="sms_gw_duress">EKTA বিপদ: %1$s-কে জোর করে SOS বাতিল করানো হয়েছে, সে এখনও বিপদে থাকতে পারে। তার ফোনে কল করবেন না। শেষ লোকেশন: %2$s (কাছের একটি Ekta ফোন থেকে পাঠানো)</string>
     <string name="sms_someone">যিনি আপনাকে জরুরি যোগাযোগ হিসেবে রেখেছেন</string>
     <string name="sms_gw_sos">EKTA SOS: %1$s %2$s-এ নেটওয়ার্কহীন জায়গা থেকে SOS চেপেছেন, সাহায্য দরকার। লোকেশন: %3$s (কাছের একটি Ekta ফোন থেকে পাঠানো)</string>
+    <string name="inc_no_data">এই এলাকার তথ্য এখনও নেই</string>
+    <string name="ss_night_cap">দিল্লি / নয়ডায় গভীর রাত (রাত 11টা থেকে সকাল 6টা): স্কোর 6.5-এর বেশি হতে পারে না।</string>
 </resources>
