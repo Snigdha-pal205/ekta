@@ -17,7 +17,7 @@
 
 | Login | Home | SOS running |
 | --- | --- | --- |
-| ![Login page: the Ekta mark beating at the centre of a ring of linked lights](docs/screenshots/login.png) | ![Home: the SOS button under the watching eyes, with the bottom navigation bar](docs/screenshots/home.png) | ![SOS running: demo 112 call, nearby places, exact location, mesh, internet and SMS status](docs/screenshots/sos-active.png) |
+| ![Login page: the Ekta mark beating at the centre of a ring of linked lights](docs/screenshots/ui/login.png) | ![Home: the SOS button under the watching eyes, with the bottom navigation bar](docs/screenshots/ui/home.png) | ![SOS running: demo 112 call, nearby places, exact location, mesh, internet and SMS status](docs/screenshots/ui/sos-active.png) |
 
 ## Why Ekta
 
@@ -50,7 +50,7 @@ Tap SOS and a 10-second countdown starts. **Cancel** is the only button, so nobo
 
 | Countdown | Nearby places (demo) | A helper's phone |
 | --- | --- | --- |
-| ![10-second countdown with one Cancel button](docs/screenshots/countdown.png) | ![Drop-down of nearby places called: recorded message, pharmacy, distance, phone number](docs/screenshots/nearby-calls.png) | ![Full-screen alert on a nearby phone: 288 m away, live location, show me where](docs/screenshots/alert.png) |
+| ![10-second countdown with one Cancel button](docs/screenshots/ui/countdown.png) | ![Drop-down of nearby places called: recorded message, pharmacy, distance, phone number](docs/screenshots/ui/nearby-calls.png) | ![Full-screen alert on a nearby phone: 288 m away, live location, show me where](docs/screenshots/ui/alert.png) |
 | **10 seconds** to cancel, then it sends by itself. | **Who would be called**, nearest first, and what they'd hear. | **Rings even on silent**, with distance and directions. |
 
 ### Know your destination
@@ -59,14 +59,14 @@ Tap SOS and a 10-second countdown starts. **Cancel** is the only button, so nobo
 
 | Safe Score | A place at 11 AM |
 | --- | --- |
-| ![Safe Score home: check where I am now, recent places, how the score works](docs/screenshots/safescore.png) | ![Connaught Place at 11 AM: five factors with their scores and a total of 9.0, Safe](docs/screenshots/safescore-result.png) |
+| ![Safe Score home: check where I am now, recent places, how the score works](docs/screenshots/ui/safescore.png) | ![Connaught Place at 11 AM: five factors with their scores and a total of 9.0, Safe](docs/screenshots/ui/safescore-result.png) |
 
 <details>
 <summary><strong>Contact and Settings</strong></summary>
 
 | Contact | Settings |
 | --- | --- |
-| ![Contact tab: call, message, change, SMS preview and the four steps](docs/screenshots/contact.png) | ![Settings: safety, app, account and about sections](docs/screenshots/settings.png) |
+| ![Contact tab: call, message, change, SMS preview and the four steps](docs/screenshots/ui/contact.png) | ![Settings: safety, app, account and about sections](docs/screenshots/ui/settings.png) |
 
 </details>
 
